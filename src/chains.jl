@@ -57,16 +57,14 @@ end
         mem_x = memory.mem_x
         indices = memory.indices_INTERNAL[current_chain]
         ordered_indices = memory.ordered_indices_INTERNAL[current_chain]
-        stagger = memory.stagger
         fast_sample_chains!(
             rng,
             mem_x,
-            $limit_expr - stagger.n_excluded[current_chain],
+            $limit_expr,
             $N,
             indices,
             ordered_indices
         )
-        skip_excluded!(indices, $N, stagger, current_chain)
         return ($(exprs...),)
     end
 end
@@ -171,9 +169,6 @@ function update_state(
             #already swapped
             memory = update_memory!!(memory, new_state.x)
         end
-    elseif is_enabled(swap_positions)
-        # a step that moved the chains without writing them leaves no block to stagger
-        clear_stagger!(memory.stagger)
     end
     return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state, order_state)
 end
@@ -532,7 +527,6 @@ function step(
         temperature_ladder = nothing,
         n_preallocated_indices::Int = 3,
         n_tries::Int = 1,
-        memory_stagger::Bool = false,
         kwargs...
     )
     model = model_wrapper.logdensity
@@ -653,7 +647,6 @@ function step(
             N₀ = ceil(Int, N₀ / n_true_chains) * n_true_chains
         end
 
-        n_dropped = max(length(mem_x) - N₀, 0)
         if length(mem_x) < N₀
             push!(log, "   Adding $(N₀ - length(mem_x)) random positions to initial memory.")
             for _ in 1:(N₀ - length(mem_x))
@@ -662,10 +655,6 @@ function step(
         elseif length(mem_x) > N₀
             push!(log, "   Initial memory size greater than N₀, truncating memory.")
             mem_x = mem_x[(end - N₀ + 1):end]
-        end
-        stagger = stagger_initial_positions!(DEMMemoryStagger(memory_stagger, n_true_chains), n_dropped)
-        if memory_stagger && N₀ - n_true_chains + 1 < chains_required(sampler) - 1
-            error("With `memory_stagger = true` the first chain can pick from only N₀ - n_chains + 1 = $(N₀ - n_true_chains + 1) memory positions, but sampler $(typeof(sampler)) picks $(chains_required(sampler) - 1). Increase N₀.")
         end
 
         total_memory_size = memory_size * n_true_chains
@@ -692,7 +681,7 @@ function step(
         end
 
         memory = DEMMemoryFill{T, typeof(mem_x), typeof(memory_method)}(
-            true_memory, memory_method, memory_refill, length(true_memory), stagger,
+            true_memory, memory_method, memory_refill, length(true_memory),
             [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
             [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains]
         )
