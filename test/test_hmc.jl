@@ -64,7 +64,7 @@ using LinearAlgebra: diag
         out = sample(
             backwards_compat_rng(5), model, scheme, 800;
             n_chains = 6, num_warmup = 300, memory = true, progress = false,
-            chain_type = DifferentialEvolutionOutput
+            chain_type = DEMOutput
         )
         flat = reshape(out.samples, :, length(μ))
         post_mean = vec(sum(flat; dims = 1) ./ size(flat, 1))
@@ -106,7 +106,7 @@ using LinearAlgebra: diag
         out = sample(
             backwards_compat_rng(42), model, scheme, 800;
             n_chains = 6, num_warmup = 300, memory = true, progress = false,
-            chain_type = DifferentialEvolutionOutput
+            chain_type = DEMOutput
         )
         flat = reshape(out.samples, :, length(μ))
         post_mean = vec(sum(flat; dims = 1) ./ size(flat, 1))
@@ -152,7 +152,7 @@ using LinearAlgebra: diag
         out = sample(
             backwards_compat_rng(7), model, scheme, 1200;
             n_chains = 6, num_warmup = 400, progress = false,
-            chain_type = DifferentialEvolutionOutput
+            chain_type = DEMOutput
         )
         flat = reshape(out.samples, :, length(μ))
         post_mean = vec(sum(flat; dims = 1) ./ size(flat, 1))
@@ -165,7 +165,7 @@ using LinearAlgebra: diag
         out = sample(
             backwards_compat_rng(13), model, scheme, 800;
             n_chains = 6, num_warmup = 300, parallel = true, progress = false,
-            chain_type = DifferentialEvolutionOutput
+            chain_type = DEMOutput
         )
         flat = reshape(out.samples, :, length(μ))
         post_mean = vec(sum(flat; dims = 1) ./ size(flat, 1))
@@ -175,10 +175,10 @@ using LinearAlgebra: diag
 
     @testset "memoryless parallel HMC is not sequential" begin
         hmc = DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ))
-        @test !DifferentialEvolutionMetropolis.is_sequential(hmc)
+        @test !DifferentialEvolutionMetropolis.cannot_use_parallel(hmc, 1)
         kwargs = (; n_chains = 4, num_warmup = 10, memory = false, parallel = true, silent = true)
         @test_logs AbstractMCMC.step(backwards_compat_rng(1), model, setup_sampler_scheme(hmc); kwargs...)
-        @test_logs (:warn, MEMORYLESS_PARALLEL_WARNING) AbstractMCMC.step(
+        @test_logs AbstractMCMC.step(
             backwards_compat_rng(1), model, setup_sampler_scheme(hmc, setup_de_update()); kwargs...
         )
     end
@@ -195,7 +195,7 @@ using LinearAlgebra: diag
                     DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8; metric = :dense); n_dims = length(μ))
                 ),
                 800; n_chains = 6, num_warmup = 300, parallel = parallel, memory = true,
-                progress = false, chain_type = DifferentialEvolutionOutput
+                progress = false, chain_type = DEMOutput
             ).samples, :, length(μ)
         )
         serial = runit(false)

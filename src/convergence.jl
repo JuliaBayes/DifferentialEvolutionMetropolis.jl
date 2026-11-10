@@ -30,13 +30,17 @@ the stationary portion of the chains.
 
 # Example
 ```@example convergence
-using DifferentialEvolutionMetropolis, AbstractMCMC, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
 
-# Create a simple model
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+struct ExampleNormalTarget end
+LogDensityProblems.dimension(::ExampleNormalTarget) = 2
+LogDensityProblems.capabilities(::ExampleNormalTarget) = LogDensityProblems.LogDensityOrder{0}()
+LogDensityProblems.logdensity(::ExampleNormalTarget, x) = -sum(abs2, x) / 2
+model_wrapper = AbstractMCMC.LogDensityModel(ExampleNormalTarget())
+using MCMCDiagnosticTools
 
 # Setup sampler
-sampler = deMCzs()
+sampler = setup_sampler_scheme(setup_de_update(), setup_snooker_update())
 
 # Use with adaptive stopping criterion
 rng = Random.default_rng()

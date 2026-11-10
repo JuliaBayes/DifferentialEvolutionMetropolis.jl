@@ -85,7 +85,7 @@
                 rng = rng,
                 save_burnt = false
             )
-            @test isa(result, DifferentialEvolutionOutput)
+            @test isa(result, DEMOutput)
             @test size(result.samples, 2) == 4  # Only cold chains
         end
 
@@ -98,7 +98,7 @@
                 rng = rng
             )
 
-            @test isa(result, DifferentialEvolutionOutput)
+            @test isa(result, DEMOutput)
             @test size(result.samples, 3) == n_dims
             @test size(result.samples, 2) == 4  # Only cold chains
         end
@@ -112,7 +112,7 @@
                 rng = rng
             )
 
-            @test isa(result, DifferentialEvolutionOutput)
+            @test isa(result, DEMOutput)
             @test size(result.samples, 3) == n_dims
             @test size(result.samples, 2) == 4  # Only cold chains
         end
@@ -134,7 +134,7 @@
                 rng = rng
             )
         end
-        @test isa(result, DifferentialEvolutionOutput)
+        @test isa(result, DEMOutput)
     end
 
     @testset "Parameter Edge Cases and Validation" begin
@@ -148,7 +148,7 @@
                 max_temp_pt = 5.0,
                 rng = rng
             )
-            @test isa(result, DifferentialEvolutionOutput)
+            @test isa(result, DEMOutput)
         end
 
         @testset "Different Temperature Spacing" begin
@@ -162,7 +162,7 @@
                 memory = false,
                 rng = rng
             )
-            @test isa(result_close, DifferentialEvolutionOutput)
+            @test isa(result_close, DEMOutput)
 
             # Test wide temperature spacing
             result_wide = deMC(
@@ -174,7 +174,7 @@
                 memory = false,
                 rng = rng
             )
-            @test isa(result_wide, DifferentialEvolutionOutput)
+            @test isa(result_wide, DEMOutput)
         end
 
         @testset "Custom Temperature Ladder" begin
@@ -188,7 +188,7 @@
                 memory = false,
                 rng = rng
             )
-            @test isa(result, DifferentialEvolutionOutput)
+            @test isa(result, DEMOutput)
             @test size(result.samples, 2) == 2  # Only cold chains
         end
     end
@@ -219,7 +219,7 @@
                 rng = rng,
                 memory = false
             )
-            @test isa(result, DifferentialEvolutionOutput)
+            @test isa(result, DEMOutput)
         end
 
         @testset "Snooker Updates with Temperature" begin
@@ -231,7 +231,7 @@
                 rng = rng,
                 memory = false
             )
-            @test isa(result, DifferentialEvolutionOutput)
+            @test isa(result, DEMOutput)
         end
     end
 
@@ -249,7 +249,7 @@
                 memory = false
             )
         end
-        @test isa(result, DifferentialEvolutionOutput)
+        @test isa(result, DEMOutput)
         @test size(result.samples, 2) == 2
     end
 

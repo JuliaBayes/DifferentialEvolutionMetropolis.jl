@@ -4,7 +4,7 @@
     sampler = setup_de_update()
     options = (;
         n_chains = 4, num_warmup = 10, silent = true, progress = false,
-        chain_type = DifferentialEvolutionOutput,
+        chain_type = DEMOutput,
     )
     reference = sample(backwards_compat_rng(123), wrapped, sampler, 10; options...)
     result = sample(backwards_compat_rng(123), target, sampler, 10; options...)

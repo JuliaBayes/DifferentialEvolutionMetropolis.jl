@@ -1,7 +1,7 @@
 @testset "Multiple-try" begin
     DEM = DifferentialEvolutionMetropolis
     model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([-5.0, 5.0, 1.0]))
-    sample_kwargs = (progress = false, silent = true, chain_type = DifferentialEvolutionOutput)
+    sample_kwargs = (progress = false, silent = true, chain_type = DEMOutput)
     initial_state(sampler; kwargs...) = last(
         AbstractMCMC.step(backwards_compat_rng(1), model, sampler; silent = true, kwargs...)
     )
@@ -20,7 +20,7 @@
         @test length(state.chain_models) == length(state.x)
         scheme = setup_sampler_scheme(setup_de_update(), setup_snooker_update())
         @test DEM.n_tries(initial_state(scheme; n_tries = 3).multi_try) == 3
-        @test !DEM.supports_multi_try(setup_swap_update())
+        @test !DEM.sampler_supports_multitry(setup_swap_update())
     end
 
     @testset "threaded matches serial" begin
@@ -47,9 +47,11 @@
             backwards_compat_rng(2), AbstractMCMC.LogDensityModel(counting), update;
             n_chains = n_chains, memory = false, silent = true, n_tries = n_tries
         )
-        counting.count = 0
+        for chain_model in state.chain_models
+            chain_model.count = 0
+        end
         AbstractMCMC.step(backwards_compat_rng(2), AbstractMCMC.LogDensityModel(counting), update, state)
-        @test counting.count == n_chains * (2 * n_tries - 1)
+        @test sum(chain_model.count for chain_model in state.chain_models) == n_chains * (2 * n_tries - 1)
     end
 
     @testset "zero weight trials leave the chains in place" begin
@@ -89,7 +91,7 @@
         sampler = setup_sampler_scheme(setup_subspace_sampling(), setup_snooker_update())
         rng = backwards_compat_rng(4)
         _, state = AbstractMCMC.step(rng, model, sampler; n_chains = 6, silent = true, n_tries = 3)
-        @test state.adaptive_state isa DEM.DifferentialEvolutionAdaptiveComposite
+        @test state.adaptive_state isa DEM.DEMAdaptiveComposite
         for _ in 1:200
             _, state = AbstractMCMC.step_warmup(rng, model, sampler, state)
         end
