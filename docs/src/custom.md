@@ -377,7 +377,6 @@ DifferentialEvolutionMetropolis.prepare_scratch!
 DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState
 DifferentialEvolutionMetropolis.initialize_adaptive_state
 DifferentialEvolutionMetropolis.fix_sampler
-step_warmup
 ```
 
 ### Other internals for reference
