@@ -21,6 +21,7 @@ const NO_SWAP_WARNING = r"Parallel tempering without a swap update"
 const MEMORY_HOT_CHAINS_WARNING = r"Memory-based samplers do not typically require hot chains"
 const SINGLE_WORKER_WARNING = r"Only a single (thread|process) available"
 const FIXED_CROSSOVER_WARNING = r"sampler already has a fixed crossover probability"
+const MEMORYLESS_PARALLEL_WARNING = r"None of the provided samplers can evaluate in parallel"
 
 struct WarningFilter{L <: AbstractLogger} <: AbstractLogger
     logger::L
@@ -66,6 +67,11 @@ function LogDensityProblems.logdensity(model::BendyBananaModel, x::AbstractVecto
 end
 LogDensityProblems.capabilities(model::BendyBananaModel) = LogDensityProblems.LogDensityOrder{0}()
 
+struct UnitIntervalModel end
+LogDensityProblems.dimension(::UnitIntervalModel) = 1
+LogDensityProblems.logdensity(::UnitIntervalModel, x::AbstractVector{<:Real}) = 0 <= x[1] <= 1 ? 0.0 : -Inf
+LogDensityProblems.capabilities(::UnitIntervalModel) = LogDensityProblems.LogDensityOrder{0}()
+
 mutable struct CountingNormalModel
     mean::Vector{Float64}
     count::Int
@@ -79,3 +85,22 @@ LogDensityProblems.capabilities(::CountingNormalModel) = LogDensityProblems.LogD
 
 plain(x) = sprint(show, MIME"text/plain"(), x)
 compact(x) = sprint(show, x; context = :compact => true)
+
+mutable struct CountingNaNAtModel
+    count::Int
+    nan_at::Int
+    value::Float64
+end
+LogDensityProblems.dimension(::CountingNaNAtModel) = 1
+LogDensityProblems.capabilities(::CountingNaNAtModel) = LogDensityProblems.LogDensityOrder{0}()
+function LogDensityProblems.logdensity(model::CountingNaNAtModel, x)
+    model.count += 1
+    return model.count == model.nan_at ? NaN : model.value
+end
+
+struct IntervalModel
+    outside::Float64
+end
+LogDensityProblems.dimension(::IntervalModel) = 1
+LogDensityProblems.capabilities(::IntervalModel) = LogDensityProblems.LogDensityOrder{0}()
+LogDensityProblems.logdensity(model::IntervalModel, x) = 0 <= x[1] <= 1 ? 0.0 : model.outside

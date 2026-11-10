@@ -23,10 +23,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMC
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Define a simple log-density function
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run differential evolution MCMC
 result = deMC(model_wrapper, 1000; n_chains = 10, parallel = false)
@@ -64,7 +66,7 @@ function _deMC(
         γ₂::T = 1.0,
         p_γ₂::Real = 0.1,
         β::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
-        chain_type = DifferentialEvolutionOutput,
+        chain_type = DEMOutput,
         n_hot_chains::Int = 0,
         use_parallel_tempering_swaps::Bool = n_hot_chains > 0,
         parallel_tempering_swap_probability::Real = 0.1,
@@ -134,10 +136,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMCzs
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Define a simple log-density function
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run differential evolution MCMC
 result = deMCzs(model_wrapper, 1000; n_chains = 3)
@@ -174,7 +178,7 @@ function _deMCzs(
         γₛ::Union{Nothing, Real} = nothing,
         p_snooker::Union{Nothing, Real} = 0.1,
         β::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
-        chain_type = DifferentialEvolutionOutput,
+        chain_type = DEMOutput,
         n_hot_chains::Int = 0,
         use_parallel_tempering_swaps::Bool = n_hot_chains > 0,
         parallel_tempering_swap_probability::Real = 0.1,
@@ -242,10 +246,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example DREAMz
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Define a simple log-density function
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run DREAM with subspace sampling
 result = DREAMz(model_wrapper, 1000; n_chains = 10, memory = false)
@@ -289,7 +295,7 @@ function _DREAMz(
         δ::Union{Integer, DiscreteUnivariateDistribution} = Distributions.DiscreteUniform(1, 3),
         cr_uniform_weight::Real = 0.05,
         min_variance_count::Int = 10,
-        chain_type = DifferentialEvolutionOutput,
+        chain_type = DEMOutput,
         n_hot_chains::Int = 0,
         use_parallel_tempering_swaps::Bool = n_hot_chains > 0,
         parallel_tempering_swap_probability::Real = 0.1,

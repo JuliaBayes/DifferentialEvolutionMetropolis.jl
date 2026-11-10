@@ -1,7 +1,7 @@
-struct DifferentialEvolutionAdaptiveStatic{T} <:
-    AbstractDifferentialEvolutionAdaptiveState{T} end
+struct DEMAdaptiveStatic{T} <:
+    AbstractDEMAdaptiveState{T} end
 
-struct DifferentialEvolutionSample{V <: AbstractVector{<:Real}, VV <: AbstractVector{V}}
+struct DEMSample{V <: AbstractVector{<:Real}, VV <: AbstractVector{V}}
     "current position"
     x::VV
     "log density at current position"
@@ -9,23 +9,25 @@ struct DifferentialEvolutionSample{V <: AbstractVector{<:Real}, VV <: AbstractVe
 end
 
 function create_sample(
-        state::DifferentialEvolutionState
+        state::DEMState
     )
-    return DifferentialEvolutionSample(
+    return DEMSample(
         copy.(state.xₚ_smpl_view),
         copy(state.ldₚ_smpl_view)
     )
 end
 
+# Chains are updated in order, so chains before `current_chain` have their new position in `xₚ`
 @generated function pick_chains(
-        state::DifferentialEvolutionState{T, A, L, M},
+        state::DEMState{T, A, L, M},
         current_chain::Int,
         ::Val{N}
-    ) where {T, A, L, M <: DifferentialEvolutionMemoryless, N}
-    exprs = [:(x[indices[$i]]) for i in 1:N]
+    ) where {T, A, L, M <: DEMMemoryless, N}
+    exprs = [:(indices[$i] < current_chain ? xₚ[indices[$i]] : x[indices[$i]]) for i in 1:N]
     return quote
         rng = state.rngs[current_chain]
         x = state.x
+        xₚ = state.xₚ
         memory = state.memory
         indices = memory.indices_INTERNAL[current_chain]
         ordered_indices = memory.ordered_indices_INTERNAL[current_chain]
@@ -43,12 +45,12 @@ end
 end
 
 @generated function pick_chains(
-        state::DifferentialEvolutionState{T, A, L, M, V, VV},
+        state::DEMState{T, A, L, M, Model, B, V, VV},
         current_chain::Int,
         ::Val{N}
-    ) where {T, A, L, V, VV, M <: AbstractDifferentialEvolutionMemoryFormat{T, VV}, N}
+    ) where {T, A, L, V, VV, Model, B, M <: AbstractDEMMemoryFormat{T, VV}, N}
     exprs = [:(mem_x[indices[$i]]) for i in 1:N]
-    limit_expr = M <: DifferentialEvolutionMemoryFill ? :(memory.fill.position) : :(length(mem_x))
+    limit_expr = M <: DEMMemoryFill ? :(memory.fill.position) : :(length(mem_x))
     return quote
         rng = state.rngs[current_chain]
         memory = state.memory
@@ -71,94 +73,94 @@ is_enabled(option::Val{true}) = true
 is_enabled(option::Val{false}) = false
 
 function _update_state(
-        state::DifferentialEvolutionState{
-            T, A1, L1, M1, V, VV, R, Model, V1, V2,
+        state::DEMState{
+            T, A1, L1, M1, Model, B, V, VV, R, V1, V2,
         },
         swap_positions,
-        memory::AbstractDifferentialEvolutionMemory{T},
-        adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T},
-        temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T},
+        memory::AbstractDEMMemory{T},
+        adaptive_state::AbstractDEMAdaptiveState{T},
+        temperature_ladder::AbstractDEMTemperatureLadder{T},
         rngs::Vector{<:AbstractRNG},
-        new_state::DifferentialEvolutionState{
-            T, A2, L2, M2, V, VV, R, Model, V1, V2,
+        new_state::DEMState{
+            T, A2, L2, M2, Model, B, V, VV, R, V1, V2,
         },
         order_state,
     ) where {
         T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
-        A1 <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L1 <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        A2 <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L2 <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        M1 <: AbstractDifferentialEvolutionMemory{T},
-        M2 <: AbstractDifferentialEvolutionMemory{T},
+        A1 <: AbstractDEMAdaptiveState{T},
+        L1 <: AbstractDEMTemperatureLadder{T},
+        A2 <: AbstractDEMAdaptiveState{T},
+        L2 <: AbstractDEMTemperatureLadder{T},
+        M1 <: AbstractDEMMemory{T},
+        M2 <: AbstractDEMMemory{T},
         V1 <: SubArray, V2 <: SubArray,
-        R <: AbstractRNG, Model,
+        R <: AbstractRNG, Model, B,
     }
     if is_enabled(swap_positions)
         #swap over x and xₚ for the next update
-        return DifferentialEvolutionState(
+        return DEMState(
             new_state.xₚ, new_state.ldₚ, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, state.multi_try, new_state.x, new_state.ld, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view, new_state.x_smpl_view, new_state.ld_smpl_view, order_state
         )
     else
         #already swapped elsewhere
-        return DifferentialEvolutionState(
+        return DEMState(
             new_state.x, new_state.ld, rngs, adaptive_state, temperature_ladder, memory, state.chain_models, state.multi_try, new_state.xₚ, new_state.ldₚ, new_state.x_smpl_view, new_state.ld_smpl_view, new_state.xₚ_smpl_view, new_state.ldₚ_smpl_view, order_state
         )
     end
 end
 
 function update_state(
-        state::DifferentialEvolutionState{
-            T, A1, L1, M1, V, VV, R, Model, V1, V2,
+        state::DEMState{
+            T, A1, L1, M1, Model, B, V, VV, R, V1, V2,
         };
         swap_positions = Val(false),
-        memory::DifferentialEvolutionMemoryless{T} = state.memory,
-        adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T} = state.adaptive_state,
-        temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
+        memory::DEMMemoryless{T} = state.memory,
+        adaptive_state::AbstractDEMAdaptiveState{T} = state.adaptive_state,
+        temperature_ladder::AbstractDEMTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
         rngs::Vector{<:AbstractRNG} = state.rngs,
         order_state = state.order_state,
-        new_state::DifferentialEvolutionState{
-            T, A2, L2, M2, V, VV, R, Model, V1, V2,
+        new_state::DEMState{
+            T, A2, L2, M2, Model, B, V, VV, R, V1, V2,
         } = state,
         kwargs...
     ) where {
         T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
-        A1 <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L1 <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        A2 <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L2 <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        M1 <: DifferentialEvolutionMemoryless{T},
-        M2 <: AbstractDifferentialEvolutionMemory{T},
+        A1 <: AbstractDEMAdaptiveState{T},
+        L1 <: AbstractDEMTemperatureLadder{T},
+        A2 <: AbstractDEMAdaptiveState{T},
+        L2 <: AbstractDEMTemperatureLadder{T},
+        M1 <: DEMMemoryless{T},
+        M2 <: AbstractDEMMemory{T},
         V1 <: SubArray, V2 <: SubArray,
-        R <: AbstractRNG, Model,
+        R <: AbstractRNG, Model, B,
     }
     return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state, order_state)
 end
 
 function update_state(
-        state::DifferentialEvolutionState{
-            T, A1, L1, M1, V, VV, R, Model, V1, V2,
+        state::DEMState{
+            T, A1, L1, M1, Model, B, V, VV, R, V1, V2,
         };
         swap_positions = Val(false),
-        memory::AbstractDifferentialEvolutionMemory{T} = state.memory,
-        adaptive_state::AbstractDifferentialEvolutionAdaptiveState{T} = state.adaptive_state,
-        temperature_ladder::AbstractDifferentialEvolutionTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
+        memory::AbstractDEMMemory{T} = state.memory,
+        adaptive_state::AbstractDEMAdaptiveState{T} = state.adaptive_state,
+        temperature_ladder::AbstractDEMTemperatureLadder{T} = update_ladder!!(state.temperature_ladder),
         rngs::Vector{<:AbstractRNG} = state.rngs,
         order_state = state.order_state,
-        new_state::DifferentialEvolutionState{
-            T, A2, L2, M2, V, VV, R, Model, V1, V2,
+        new_state::DEMState{
+            T, A2, L2, M2, Model, B, V, VV, R, V1, V2,
         } = state,
         update_memory::Bool = false
     ) where {
         T <: Real, V <: AbstractVector{T}, VV <: AbstractVector{V},
-        A1 <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L1 <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        A2 <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L2 <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        M1 <: AbstractDifferentialEvolutionMemoryFormat{T, VV},
-        M2 <: AbstractDifferentialEvolutionMemory{T},
+        A1 <: AbstractDEMAdaptiveState{T},
+        L1 <: AbstractDEMTemperatureLadder{T},
+        A2 <: AbstractDEMAdaptiveState{T},
+        L2 <: AbstractDEMTemperatureLadder{T},
+        M1 <: AbstractDEMMemoryFormat{T, VV},
+        M2 <: AbstractDEMMemory{T},
         V1 <: SubArray, V2 <: SubArray,
-        R <: AbstractRNG, Model,
+        R <: AbstractRNG, Model, B,
     }
     if update_memory
         if is_enabled(swap_positions)
@@ -171,23 +173,78 @@ function update_state(
     return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state, order_state)
 end
 
+# Sequential updates without multiple tries run one chain at a time even with `parallel = true`
+cannot_use_parallel(sampler::AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerSingleTry}, n_tries::Int) = true
+cannot_use_parallel(sampler::AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerMultipleTry}, n_tries::Int) = !(n_tries > 1)
+cannot_use_parallel(sampler::AbstractDEMSampler{AbstractDEMSamplerMultiThread}, n_tries::Int) = false
+
+function check_parallel(sampler::AbstractDEMMetaSampler, parallel::Bool, memory::Bool, n_tries::Int)
+    if parallel && !memory && cannot_use_parallel(sampler, n_tries)
+        @warn "None of the provided samplers can evaluate in parallel, yet `parallel = true`, consider `memory = true` or multi-try updates to use multithreading."
+    end
+    return nothing
+end
+
+function checked_logdensity(model, x)
+    value = logdensity(model, x)
+    isnan(value) && throw(DomainError(value, "Log density must not be NaN"))
+    return value
+end
+
 function update_chain!(model, state, offset, i)
     if isinf(offset) & (sign(offset) == -1.0)
         copyto!(state.xₚ[i], state.x[i])
         state.ldₚ[i] = state.ld[i]
         return false
     else
-        state.ldₚ[i] = logdensity(model, state.xₚ[i])
-        if log(rand(state.rngs[i])) >
+        state.ldₚ[i] = checked_logdensity(model, state.xₚ[i])
+        if log(rand(state.rngs[i])) <
                 (state.ldₚ[i] - state.ld[i]) / get_temperature(state.temperature_ladder, i) + offset
+            return true
+        else
             copyto!(state.xₚ[i], state.x[i])
             state.ldₚ[i] = state.ld[i]
             return false
-        else
-            return true
         end
     end
 end
+
+function propose_and_update_chain!(state, sampler, i)
+    offset, = proposal!(state.xₚ[i], state.x[i], state, sampler, i)
+    update_chain!(state.chain_models[i], state, offset, i)
+    return nothing
+end
+
+function propose_and_update_chains!(state, sampler)
+    for i in eachindex(state.x)
+        propose_and_update_chain!(state, sampler, i)
+    end
+    return nothing
+end
+
+function update_chains!(state, sampler, parallel::Bool)
+    if parallel
+        Threads.@threads for i in eachindex(state.x)
+            propose_and_update_chain!(state, sampler, i)
+        end
+    else
+        propose_and_update_chains!(state, sampler)
+    end
+
+    return nothing
+end
+
+# if we are not using memory and not parallel compatible, we ignore parallel, the multi-try method here is more specific so takes precedence
+function update_chains!(
+        state::DEMState{<:Any, <:Any, <:Any, <:DEMMemoryless},
+        sampler::AbstractDEMSampler{AbstractDEMSamplerSerial}, parallel::Bool
+    )
+    propose_and_update_chains!(state, sampler)
+
+    return nothing
+end
+
+# multi-try methods are defined in src/multi_try.jl
 
 # non-adaptive step
 """
@@ -202,16 +259,17 @@ function automatically fixes adaptive parameters before sampling.
 # Arguments
 - `rng`: Random number generator
 - `model_wrapper`: LogDensityModel containing the target log-density function
-- `sampler`: Differential evolution sampler (any AbstractDifferentialEvolutionSampler)
+- `sampler`: Differential evolution sampler from this package
 - `state`: Current state of all chains
 
 # Keyword Arguments
 - `parallel`: Whether to run chains in parallel using threading. Defaults to `false`. Advisable for slow models.
+  With a memoryless state, updates other than HMC update the chains in turn and only evaluate each chain's multiple-try proposals in parallel.
 - `update_memory`: Whether to update the memory with new positions (for memory-based samplers). Defaults to `true`. Over writes memory options given at initialization.
 - `kwargs...`: Additional keyword arguments passed to update functions (see https://turinglang.org/AbstractMCMC.jl/stable/api/#Common-keyword-arguments)
 
 # Returns
-- `sample`: DifferentialEvolutionSample containing new positions and log-densities
+- `sample`: DEMSample containing new positions and log-densities
 - `new_state`: Updated state for the next iteration
 
 # Example
@@ -224,9 +282,9 @@ See also [`step_warmup`](@ref), [`sample` from AbstractMCMC](https://turinglang.
 function step(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
-        sampler::AbstractDifferentialEvolutionSampler,
-        state::DifferentialEvolutionState{
-            T, DifferentialEvolutionAdaptiveStatic{T},
+        sampler::AbstractDEMMetaSampler,
+        state::DEMState{
+            T, DEMAdaptiveStatic{T},
         };
         parallel::Bool = false,
         update_memory::Bool = true,
@@ -243,20 +301,9 @@ function step(
     x = state.x
 
     prepare_scratch!(sampler, state)
+
     # loop through chains running the update
-    if uses_multi_try(sampler, state)
-        multi_try_update!(model, state, sampler, parallel)
-    elseif parallel
-        Threads.@threads for i in eachindex(x)
-            offset, = proposal!(state.xₚ[i], x[i], state, sampler, i)
-            update_chain!(state.chain_models[i], state, offset, i)
-        end
-    else
-        for i in eachindex(x)
-            offset, = proposal!(state.xₚ[i], x[i], state, sampler, i)
-            update_chain!(model, state, offset, i)
-        end
-    end
+    update_chains!(state, sampler, parallel)
 
     return create_sample(state),
         update_state(
@@ -268,7 +315,7 @@ end
 
 #previously adapted step
 """
-    fix_sampler(sampler::AbstractDifferentialEvolutionSampler, adaptive_state::AbstractDifferentialEvolutionAdaptiveState)
+    fix_sampler(sampler::AbstractDEMMetaSampler, adaptive_state::AbstractDEMAdaptiveState)
 
 Fix adaptive parameters of a sampler to their current adapted values.
 
@@ -294,14 +341,14 @@ using DifferentialEvolutionMetropolis, Random, Distributions
 See also [`fix_sampler_state`](@ref).
 """
 function fix_sampler(
-        sampler::AbstractDifferentialEvolutionSampler,
-        adaptive_state::AbstractDifferentialEvolutionAdaptiveState
+        sampler::AbstractDEMMetaSampler,
+        adaptive_state::AbstractDEMAdaptiveState
     )
     return sampler
 end
 
 """
-    fix_sampler_state(sampler::AbstractDifferentialEvolutionSampler, state::DifferentialEvolutionState)
+    fix_sampler_state(sampler::AbstractDEMMetaSampler, state::DEMState)
 
 Fix adaptive sampler parameters and return a corresponding non-adaptive state.
 
@@ -311,7 +358,7 @@ adaptive components. Adaptive updates inside sampler schemes are fixed as well.
 
 # Arguments
 - `sampler`: The differential evolution sampler (potentially adaptive)
-- `state`: The current sampler state (DifferentialEvolutionState)
+- `state`: The current sampler state (DEMState)
 
 # Returns
 - `fixed_sampler`: Sampler with adaptive parameters fixed to current values
@@ -328,19 +375,19 @@ using DifferentialEvolutionMetropolis, Random, Distributions
 See also [`fix_sampler`](@ref).
 """
 function fix_sampler_state(
-        sampler::AbstractDifferentialEvolutionSampler,
-        state::DifferentialEvolutionState{T}
+        sampler::AbstractDEMMetaSampler,
+        state::DEMState{T}
     ) where {T <: Real}
     return fix_sampler(sampler, state.adaptive_state),
         update_state(
             state; update_memory = false,
-            adaptive_state = DifferentialEvolutionAdaptiveStatic{T}(),
+            adaptive_state = DEMAdaptiveStatic{T}(),
             temperature_ladder = state.temperature_ladder
         )
 end
 
 """
-    step(rng, model_wrapper, sampler, state::DifferentialEvolutionState; update_memory=true, kwargs...)
+    step(rng, model_wrapper, sampler, state::DEMState; update_memory=true, kwargs...)
 
 Evaluate an adaptive step. Delegates to the inner step after fixing the sampler state,
 correctly forwarding the `update_memory` flag, and updating the outer state with the
@@ -349,12 +396,14 @@ resulting memory and temperature ladder without duplicating memory writes or tem
 function step(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
-        sampler::AbstractDifferentialEvolutionSampler,
-        state::DifferentialEvolutionState;
+        sampler::AbstractDEMMetaSampler,
+        state::DEMState;
         update_memory::Bool = true,
         kwargs...
     )
+
     fixed_sampler, fixed_state = fix_sampler_state(sampler, state)
+
     sample, new_state = step(
         rng, model_wrapper, fixed_sampler, fixed_state;
         update_memory = update_memory, kwargs...
@@ -369,17 +418,17 @@ function step(
 end
 
 function initialize_adaptive_state(
-        sampler::AbstractDifferentialEvolutionSampler,
+        sampler::AbstractDEMMetaSampler,
         model_wrapper::LogDensityModel, n_chains::Int
     )
     return initialize_adaptive_state(sampler, model_wrapper, n_chains, Float64)
 end
 
 function initialize_adaptive_state(
-        sampler::AbstractDifferentialEvolutionSampler,
+        sampler::AbstractDEMMetaSampler,
         model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
     ) where {T <: Real}
-    return DifferentialEvolutionAdaptiveStatic{T}()
+    return DEMAdaptiveStatic{T}()
 end
 
 """
@@ -420,28 +469,30 @@ and returns the initial sample and state that can be used with `AbstractMCMC.sam
 $(generic_de_kwargs)
 
 # Returns
-- `sample`: DifferentialEvolutionSample containing initial positions and log-densities
-- `state`: Initial state (DifferentialEvolutionState)
+- `sample`: DEMSample containing initial positions and log-densities
+- `state`: Initial state (DEMState)
   ready for sampling
 
 # Examples
 ```@example step_function
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Setup
 rng = Random.default_rng()
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
-sampler = deMCzs()
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
+sampler = setup_random_order_scheme(setup_de_update(n_dims = 2), setup_snooker_update(); w = [0.9, 0.1])
 
 # Basic initialization with default settings
-sample, state = step(rng, model_wrapper, sampler)
+sample, state = AbstractMCMC.step(rng, model_wrapper, sampler)
 
 # Custom number of chains with memory disabled
-sample2, state2 = step(rng, model_wrapper, sampler; n_chains=10, memory=false)
+sample2, state2 = AbstractMCMC.step(rng, model_wrapper, sampler; n_chains=10, memory=false)
 
 # With custom initial positions
-init_pos = [randn(2) for _ in 1:8]
-sample3, state3 = step(rng, model_wrapper, sampler; initial_position=init_pos)
+init_pos = [randn(rng, 2) for _ in 1:8]
+sample3, state3 = AbstractMCMC.step(rng, model_wrapper, sampler; initial_position=init_pos)
 ```
 
 # Notes
@@ -452,7 +503,7 @@ See also [`sample` from AbstractMCMC](https://turinglang.org/AbstractMCMC.jl/dev
 function step(
         rng::AbstractRNG,
         model_wrapper::LogDensityModel,
-        sampler::AbstractDifferentialEvolutionSampler;
+        sampler::AbstractDEMMetaSampler;
         n_chains::Int = max(dimension(model_wrapper.logdensity) * 2, 3),
         n_hot_chains::Int = 0,
         memory::Bool = true,
@@ -480,6 +531,7 @@ function step(
     )
     model = model_wrapper.logdensity
     n_tries = check_n_tries(sampler, n_tries)
+    check_parallel(sampler, parallel, memory, n_tries)
     initial_position = resolve_initial_position(
         initial_position, rng, n_chains + n_hot_chains,
         memory ? something(N₀, n_chains + n_hot_chains) : 0;
@@ -504,7 +556,7 @@ function step(
     if adapt
         adaptive_state = initialize_adaptive_state(sampler, model_wrapper, n_true_chains, T)
     else
-        adaptive_state = DifferentialEvolutionAdaptiveStatic{T}()
+        adaptive_state = DEMAdaptiveStatic{T}()
     end
 
     extra_memory = nothing
@@ -516,7 +568,7 @@ function step(
         initial_position = [Vector{T}(position) for position in initial_position]
         current_N = length(initial_position)
         current_pars = length(initial_position[1])
-        if current_pars != dimension(model)
+        if any(position -> length(position) != dimension(model), initial_position)
             print_log(log)
             error("   Number of parameters in initial position must be equal to the number of parameters in the log density")
         end
@@ -567,10 +619,10 @@ function step(
     if parallel
         ld = Vector{eltype(x[1])}(undef, length(x))
         Threads.@threads for i in eachindex(x)
-            ld[i] = logdensity(chain_models[i], x[i])
+            ld[i] = checked_logdensity(chain_models[i], x[i])
         end
     else
-        ld = T[logdensity(model, xi) for xi in x]
+        ld = T[checked_logdensity(model, xi) for xi in x]
     end
 
     if memory && n_hot_chains > 0
@@ -621,20 +673,20 @@ function step(
         #setup fill method
         if memory_thin_interval > 0
             push!(log, "   Using thinning interval of $memory_thin_interval for memory updates.")
-            memory_method = DifferentialEvolutionMemoryFillThin(
+            memory_method = DEMMemoryFillThin(
                 N₀, n_true_chains, memory_thin_interval, memory_thin_interval
             )
         else
-            memory_method = DifferentialEvolutionMemoryFillEvery(N₀, n_true_chains)
+            memory_method = DEMMemoryFillEvery(N₀, n_true_chains)
         end
 
-        memory = DifferentialEvolutionMemoryFill{T, typeof(mem_x), typeof(memory_method)}(
+        memory = DEMMemoryFill{T, typeof(mem_x), typeof(memory_method)}(
             true_memory, memory_method, memory_refill, length(true_memory),
             [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
             [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains]
         )
     else
-        memory = DifferentialEvolutionMemoryless{T}(
+        memory = DEMMemoryless{T}(
             [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
             [Vector{Int}(undef, n_preallocated_indices) for _ in 1:n_true_chains],
         )
@@ -647,7 +699,7 @@ function step(
         print_log(log)
     end
 
-    state = DifferentialEvolutionState(
+    state = DEMState(
         reseed!(copy(rng), rng), x, ld, adaptive_state, temperature_ladder_struct, memory, chain_models, n_tries,
         initialize_order_state(sampler)
     )

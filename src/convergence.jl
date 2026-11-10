@@ -10,6 +10,8 @@ indicating convergence across chains. This function is designed to be used as th
 The diagnostic is computed on the last half of the collected samples to focus on
 the stationary portion of the chains.
 
+Load MCMCDiagnosticTools before using this criterion. Otherwise, it throws an error.
+
 # Arguments
 - `rng`: Random number generator (unused but required by AbstractMCMC interface)
 - `model`: The model being sampled (unused but required by interface)
@@ -30,13 +32,16 @@ the stationary portion of the chains.
 
 # Example
 ```@example convergence
-using DifferentialEvolutionMetropolis, AbstractMCMC, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
+using MCMCDiagnosticTools
 
 # Create a simple model
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Setup sampler
-sampler = deMCzs()
+sampler = setup_random_order_scheme(setup_de_update(n_dims = 2), setup_snooker_update(); w = [0.9, 0.1])
 
 # Use with adaptive stopping criterion
 rng = Random.default_rng()
@@ -55,6 +60,5 @@ function r̂_stopping_criteria(
         iteration;
         kwargs...
     )
-    @error "Please load MCMCDiagnosticTools.jl to use `r̂_stopping_criteria`"
-    return true
+    return error("Please load MCMCDiagnosticTools.jl to use `r̂_stopping_criteria`")
 end
