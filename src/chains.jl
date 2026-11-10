@@ -29,7 +29,7 @@ end
 
 Return a tuple of `N` distinct positions, drawn without replacement using `state.rngs[current_chain]`.
 
-Without memory these are other live chains, excluding `current_chain`, using the new position of any chain already updated in this step; with memory they are drawn from the memory archive.
+Without memory these are other live chains, excluding `current_chain`; with memory they are drawn from the memory archive.
 If `N` exceeds `n_preallocated_indices` (default 3, see [`deMC`](@ref)) the index buffers are resized with a warning.
 """
 function pick_chains end
@@ -191,9 +191,9 @@ function update_state(
 end
 
 # Sequential updates without multiple tries run one chain at a time even with `parallel = true`
-cannot_use_parallel(sampler::AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerSingleTry}, n_tries::Int) = true
-cannot_use_parallel(sampler::AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerMultipleTry}, n_tries::Int) = !(n_tries > 1)
-cannot_use_parallel(sampler::AbstractDEMSampler{AbstractDEMSamplerMultiThread}, n_tries::Int) = false
+cannot_use_parallel(sampler::AbstractDEMSampler{DEMSamplerSerial, DEMSamplerSingleTry}, n_tries::Int) = true
+cannot_use_parallel(sampler::AbstractDEMSampler{DEMSamplerSerial, DEMSamplerMultipleTry}, n_tries::Int) = !(n_tries > 1)
+cannot_use_parallel(sampler::AbstractDEMSampler{DEMSamplerMultiThread}, n_tries::Int) = false
 
 function check_parallel(sampler::AbstractDEMMetaSampler, parallel::Bool, memory::Bool, n_tries::Int)
     if parallel && !memory && cannot_use_parallel(sampler, n_tries)
@@ -254,7 +254,7 @@ end
 # if we are not using memory and not parallel compatible, we ignore parallel, the multi-try method here is more specific so takes precedence
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:DEMMemoryless},
-        sampler::AbstractDEMSampler{AbstractDEMSamplerSerial}, parallel::Bool
+        sampler::AbstractDEMSampler{DEMSamplerSerial}, parallel::Bool
     )
     propose_and_update_chains!(state, sampler)
 
@@ -457,15 +457,6 @@ function initialize_adaptive_state(
     return DEMAdaptiveStatic{T}()
 end
 
-"""
-    resolve_initial_position(initial_position, rng, n_chains, n_memory; stratify = true)
-
-Convert a user-supplied `initial_position` into `nothing` or a vector of parameter vectors.
-
-Extensions add methods for other input types (e.g. Pathfinder results). These should return
-`n_chains` chain starting positions followed by `n_memory` initial memory positions.
-The default methods return the input unchanged and ignore `stratify`.
-"""
 resolve_initial_position(initial_position::Nothing, rng, n_chains, n_memory; stratify = true) = initial_position
 resolve_initial_position(initial_position::AbstractVector{<:AbstractVector{<:Real}}, rng, n_chains, n_memory; stratify = true) = initial_position
 function resolve_initial_position(initial_position, rng, n_chains, n_memory; stratify = true)

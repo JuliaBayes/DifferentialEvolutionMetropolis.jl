@@ -24,75 +24,69 @@ import AbstractMCMC
 """
     AbstractDEMSamplerExecutionMode
 
-Supertype of the execution mode parameter `E` of an [`DifferentialEvolutionMetropolis.AbstractDEMSampler`](@ref), declaring whether chains can update in parallel.
+Supertype indicating the execution mode of an [`DifferentialEvolutionMetropolis.AbstractDEMSampler`](@ref), declaring whether chains can update in parallel with multithreading.
 """
 abstract type AbstractDEMSamplerExecutionMode end
 
 """
-    AbstractDEMSamplerSerial
+    DEMSamplerSerial
 
-Execution mode of an update whose proposals read other chains, so without memory the chains update in turn (unless multiple tries are used).
+Execution mode of an update whose proposals read other chains, so without memory the chains must update in turn (unless multiple tries are used).
 """
-abstract type AbstractDEMSamplerSerial <: AbstractDEMSamplerExecutionMode end
+struct DEMSamplerSerial <: AbstractDEMSamplerExecutionMode end
 
 """
-    AbstractDEMSamplerMultiThread
+    DEMSamplerMultiThread
 
 Execution mode of an update whose chains can update in parallel, even without memory.
 """
-abstract type AbstractDEMSamplerMultiThread <: AbstractDEMSamplerExecutionMode end
+struct DEMSamplerMultiThread <: AbstractDEMSamplerExecutionMode end
 
 """
     AbstractDEMSamplerTryMode
 
-Supertype of the try mode parameter `T` of an [`DifferentialEvolutionMetropolis.AbstractDEMSampler`](@ref), declaring whether the update supports multiple tries.
+Supertype indicating if an [`DifferentialEvolutionMetropolis.AbstractDEMSampler`](@ref), supports multiple tries.
 """
 abstract type AbstractDEMSamplerTryMode end
 
 """
-    AbstractDEMSamplerSingleTry
+    DEMSamplerSingleTry
 
-Try mode of an update that takes one proposal per chain per step.
+Does not support multiple tries.
 """
-abstract type AbstractDEMSamplerSingleTry <: AbstractDEMSamplerTryMode end
+struct DEMSamplerSingleTry <: AbstractDEMSamplerTryMode end
 
 """
-    AbstractDEMSamplerMultipleTry
+    DEMSamplerMultipleTry
 
 Try mode of an update that supports `n_tries > 1`, which requires a symmetric proposal with zero Hastings correction.
 """
-abstract type AbstractDEMSamplerMultipleTry <: AbstractDEMSamplerTryMode end
+struct DEMSamplerMultipleTry <: AbstractDEMSamplerTryMode end
 
 """
     AbstractDEMMetaSampler
 
-Supertype of every update and sampler scheme in the package.
+Supertype of every update and sampler scheme in the package. Includes both actual updates [`DifferentialEvolutionMetropolis.AbstractDEMSampler`](@ref) and composite schemes.
 """
 abstract type AbstractDEMMetaSampler <: AbstractMCMC.AbstractSampler end
 
 """
     AbstractDEMSampler{E <: AbstractDEMSamplerExecutionMode, T <: AbstractDEMSamplerTryMode}
 
-Supertype of a single update; a custom update subtypes it and implements [`DifferentialEvolutionMetropolis.proposal!`](@ref).
+Supertype of a single update. A struct inheriting from this type and implementing [`DifferentialEvolutionMetropolis.proposal!`](@ref), will function as an update in this package.
 """
 abstract type AbstractDEMSampler{
     E <: AbstractDEMSamplerExecutionMode,
     T <: AbstractDEMSamplerTryMode,
 } <: AbstractDEMMetaSampler end
 
-"""
-    AbstractDEMCompositeSampler
-
-Supertype of sampler schemes that combine several updates, such as [`setup_sampler_scheme`](@ref).
-"""
 abstract type AbstractDEMCompositeSampler <: AbstractDEMMetaSampler end
 
 """
     chains_required(sampler::AbstractDEMMetaSampler)
 
-Minimum number of chains `sampler` needs when sampling without memory, since its proposals then draw from the other live chains.
+Minimum number of chains `sampler` needs when sampling without memory.
 
-The fallback for any `AbstractDEMSampler` is 3, and a composite sampler requires the maximum over its updates.
 Define a method for a custom update that needs a different number, e.g. `chains_required(::MyUpdate) = 1` for a random walk.
 """
 chains_required(::AbstractDEMSampler) = 3  # conservative fallback, COV_EXCL_LINE
