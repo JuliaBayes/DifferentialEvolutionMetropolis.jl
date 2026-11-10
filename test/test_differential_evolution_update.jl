@@ -112,18 +112,32 @@
         rng = backwards_compat_rng(1)
         model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([-5.0, 5.0]))
         kwargs = (; n_chains = 4, memory = false, silent = true)
-        @test_throws ArgumentError AbstractMCMC.step(rng, model, setup_de_update(); parallel = true, kwargs...)
-        @test_throws ArgumentError deMC(model, 10; parallel = true, progress = false, silent = true)
-        @test_throws ArgumentError suppress_warnings(r"n_tries > 1") do
-            AbstractMCMC.step(rng, model, setup_snooker_update(); parallel = true, n_tries = 2, kwargs...)
+        DEM = DifferentialEvolutionMetropolis
+        @test DEM.is_sequential(setup_de_update())
+        @test !DEM.is_sequential(setup_swap_update())
+        @test DEM.is_sequential(setup_sampler_scheme(setup_de_update(), setup_swap_update()))
+
+        @test_logs (:warn, MEMORYLESS_PARALLEL_WARNING) AbstractMCMC.step(
+            rng, model, setup_de_update(); parallel = true, kwargs...
+        )
+        @test_logs (:warn, MEMORYLESS_PARALLEL_WARNING) match_mode = :any deMC(
+            model, 10; parallel = true, progress = false, silent = true
+        )
+        @test_logs (:warn, MEMORYLESS_PARALLEL_WARNING) AbstractMCMC.step(
+            rng, model, setup_sampler_scheme(setup_de_update(), setup_snooker_update()); parallel = true, n_tries = 2, kwargs...
+        )
+        @test_logs AbstractMCMC.step(rng, model, setup_de_update(); parallel = true, n_tries = 2, kwargs...)
+        @test_logs AbstractMCMC.step(rng, model, setup_de_update(); parallel = true, n_chains = 4, silent = true)
+
+        @testset "$(nameof(typeof(sampler))) runs the chains in turn" for sampler in (setup_de_update(), setup_subspace_sampling())
+            run(parallel) = suppress_warnings(MEMORYLESS_PARALLEL_WARNING) do
+                sample(
+                    backwards_compat_rng(2), model, sampler, 20;
+                    num_warmup = 10, parallel, progress = false, chain_type = DifferentialEvolutionOutput, kwargs...
+                )
+            end
+            @test run(true).samples == run(false).samples
         end
-        _, state = AbstractMCMC.step(rng, model, setup_de_update(); kwargs...)
-        @test_throws ArgumentError AbstractMCMC.step(rng, model, setup_de_update(), state; parallel = true)
-        _, state = AbstractMCMC.step(rng, model, setup_subspace_sampling(); kwargs...)
-        @test_throws ArgumentError AbstractMCMC.step_warmup(rng, model, setup_subspace_sampling(), state; parallel = true)
-        _, state = AbstractMCMC.step(rng, model, setup_de_update(); parallel = true, n_tries = 2, kwargs...)
-        _, state = AbstractMCMC.step(rng, model, setup_de_update(), state; parallel = true)
-        @test all(isfinite, state.ld)
     end
 
     @testset "Sample using memory deMC" begin

@@ -173,6 +173,16 @@ using LinearAlgebra: diag
         @test all(isfinite, flat)
     end
 
+    @testset "memoryless parallel HMC is not sequential" begin
+        hmc = DifferentialEvolutionMetropolis.setup_hmc_update(NUTS(0.8); n_dims = length(μ))
+        @test !DifferentialEvolutionMetropolis.is_sequential(hmc)
+        kwargs = (; n_chains = 4, num_warmup = 10, memory = false, parallel = true, silent = true)
+        @test_logs AbstractMCMC.step(backwards_compat_rng(1), model, setup_sampler_scheme(hmc); kwargs...)
+        @test_logs (:warn, MEMORYLESS_PARALLEL_WARNING) AbstractMCMC.step(
+            backwards_compat_rng(1), model, setup_sampler_scheme(hmc, setup_de_update()); kwargs...
+        )
+    end
+
     @testset "a dense metric is thread-safe on the parallel trajectory loop" begin
         # A `DenseEuclideanMetric` carries a `_temp` scratch buffer that `neg_energy` writes
         # every leapfrog step; `run_trajectories!` gives each chain a private-scratch copy so

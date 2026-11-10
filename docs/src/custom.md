@@ -109,6 +109,13 @@ For example:
 DifferentialEvolutionMetropolis.chains_required(::YourSampler) = 1
 ```
 
+Without memory, chains are updated in turn because each proposal reads the current positions of the other chains, so `parallel = true` has no effect on the update.
+If your sampler does not read the other chains, implement `is_sequential(sampler)` to return `false` so its chains are still updated in parallel:
+
+```julia
+DifferentialEvolutionMetropolis.is_sequential(::YourSampler) = false
+```
+
 Here is an example of a simple Metropolis-Hastings random walk update with a fixed step size:
 
 ```@example MHSampler
@@ -135,6 +142,7 @@ function DifferentialEvolutionMetropolis.proposal!(
 end
 
 DifferentialEvolutionMetropolis.chains_required(::MetropolisHastingsUpdate) = 1
+DifferentialEvolutionMetropolis.is_sequential(::MetropolisHastingsUpdate) = false
 
 ```
 

@@ -107,7 +107,7 @@
 
     @testset "samples, caches and memory after swaps" begin
         sampler = setup_sampler_scheme(setup_de_update(; n_dims = 1), swap; w = [0.5, 0.5])
-        for (memory, parallel) in ((false, false), (true, false), (true, true))
+        for memory in (false, true), parallel in (false, true)
             s = swap_state([[1.0, 1.0, 1.0, 2.0, 4.0]]; memory, sampler)
             rng = backwards_compat_rng(123)
             for _ in 1:10

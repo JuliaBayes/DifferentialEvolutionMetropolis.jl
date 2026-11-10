@@ -1,5 +1,7 @@
 struct DifferentialEvolutionSwapSampler <: AbstractDifferentialEvolutionSampler end
 
+is_sequential(::DifferentialEvolutionSwapSampler) = false
+
 """
 Set up a parallel tempering swap update.
 

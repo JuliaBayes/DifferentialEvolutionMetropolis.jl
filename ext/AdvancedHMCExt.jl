@@ -1007,6 +1007,7 @@ function step(
 end
 
 DEM.chains_required(::DifferentialEvolutionHMCSampler) = 1
+DEM.is_sequential(::DifferentialEvolutionHMCSampler) = false
 
 # -----------------------------------------------------------------------------
 # Display

@@ -239,15 +239,16 @@
         rng = backwards_compat_rng(4444)
 
         # Test parallel execution with temperature
-        result = DREAMz(
-            ld, 30;
-            n_chains = 2,
-            n_hot_chains = 2,
-            parallel = true,
-            n_tries = 2,
-            rng = rng,
-            memory = false
-        )
+        result = suppress_warnings(MEMORYLESS_PARALLEL_WARNING) do
+            DREAMz(
+                ld, 30;
+                n_chains = 2,
+                n_hot_chains = 2,
+                parallel = true,
+                rng = rng,
+                memory = false
+            )
+        end
         @test isa(result, DifferentialEvolutionOutput)
         @test size(result.samples, 2) == 2
     end

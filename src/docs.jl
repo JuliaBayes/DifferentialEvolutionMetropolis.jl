@@ -16,8 +16,8 @@ _generic_de_kwargs_1 = """
   through the mixture components, so that each component gets a chain. If `false`, they are plain draws from the
   mixture. Only used for `MultiPathfinderResult` and tuple/vector-of-`PathfinderResult` inputs. Defaults to `true`.
 - `parallel`: Whether to update chains, and evaluate initial log-densities, in parallel. Useful for expensive models.
-  Memoryless chains are updated in turn, so with `memory = false` this requires `n_tries > 1` and only each chain's
-  multiple-try proposals are evaluated in parallel. Defaults to `false`.
+  With `memory = false`, updates other than HMC update the chains in turn, so only each chain's multiple-try
+  proposals are evaluated in parallel and a warning is given if an update would run without them. Defaults to `false`.
 - `n_tries`: Number of multiple-try proposals per chain each step.
   Each chain draws `n_tries` candidates, selects one with probability proportional to its target density (tempered if using annealing or parallel tempering), then draws `n_tries - 1` reference proposals from the selected candidate to give the acceptance probability.
   This needs `n_chains * (2 * n_tries - 1)` log-density evaluations per step and is only worthwhile with `parallel = true`.
@@ -89,7 +89,7 @@ This sampler uses differential evolution updates with optional switching between
 scaling factors (`γ₁` and `γ₂`) to enable mode switching.
 
 Without memory, chains are updated in turn, each proposing from the current positions of the
-other chains, so `parallel = true` requires `n_tries > 1`.
+other chains, so `parallel = true` only evaluates each chain's multiple-try proposals in parallel.
 
 See doi.org/10.1007/s11222-006-8769-1 for more information.
 """

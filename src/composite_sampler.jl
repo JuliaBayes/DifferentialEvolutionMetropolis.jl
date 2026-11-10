@@ -231,6 +231,8 @@ function select_update!(
 end
 
 supports_multi_try(s::DifferentialEvolutionCompositeSampler) = any(supports_multi_try, s.updates)
+is_sequential(s::DifferentialEvolutionCompositeSampler) = any(is_sequential, s.updates)
+runs_in_turn(s::DifferentialEvolutionCompositeSampler, n_tries::Int) = any(u -> runs_in_turn(u, n_tries), s.updates)
 
 # if there are no actually adaptive states, we can just use the static one
 function step(

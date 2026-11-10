@@ -165,7 +165,8 @@ There are two levels of parallelism possible:
   For example `sample(model, sampler, MCMCThreads(), 1000, 3; n_chains = 10)` would draw 1000 samples from 3 completely separate ensembles each using 10 chains within the ensemble.
   The 3 ensembles would be run concurrently with multi-threading.
 - **Within one interacting DE ensemble:** `parallel = false` chains within the ensemble update sequentially, with `parallel = true` and `memory = true` these can be multithreaded and update in parallel.
-  Without memory each chain proposes from the current positions of the others, so chains must update in turn and `parallel = true` requires `n_tries > 1` (see below).
+  Without memory each chain proposes from the current positions of the others, so chains update in turn and `parallel = true` only threads the multiple-try proposals of each chain (`n_tries > 1`, see below), with a warning if an update in the scheme cannot use them.
+  HMC updates do not read the other chains and still run in parallel.
   For example For example `sample(model, sampler, MCMCDistributed(), 1000, 3; n_chains = 10, parallel = true)` would draw 1000 samples from 3 completely separate ensembles each using 10 chains within the ensemble.
   The ensembles would run in parallel using `Distributed.jl`, while within each ensemble, updates are multithreaded.
 
