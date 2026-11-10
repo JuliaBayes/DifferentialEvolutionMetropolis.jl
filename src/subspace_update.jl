@@ -239,4 +239,4 @@ memory_picks(sampler::AbstractDEMSubspaceSampler) = 2 * ceil(Int, δ_median(samp
 
 # `sampler(δ)` can return a sampler with no `median` (e.g. an `AliasTable` for `Categorical`), so those use a sampled median.
 δ_median(δ::Union{Dirac, DiscreteUniform}) = median(δ)
-δ_median(δ::Sampleable) = median(rand(Xoshiro(1), δ, 1001))
+δ_median(δ::Sampleable) = median(rand(Xoshiro(1), δ, 1000))
