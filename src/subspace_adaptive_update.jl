@@ -174,7 +174,7 @@ function step_warmup(
                 )
             end
         end
-    elseif parallel
+    elseif update_in_parallel(state, parallel)
         # thread safe updating
         Δ_update = zeros(T, length(x))
         cr_update = Vector{Int}(undef, length(x))

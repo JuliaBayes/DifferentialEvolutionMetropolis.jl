@@ -24,11 +24,12 @@
     end
 
     @testset "threaded matches serial" begin
-        @testset "$(nameof(typeof(update)))" for update in (setup_de_update(), setup_subspace_sampling())
+        updates = (setup_de_update(), setup_subspace_sampling(), setup_sampler_scheme(setup_de_update(), setup_snooker_update()))
+        @testset "$(nameof(typeof(update))), memory = $memory" for update in updates, memory in (false, true)
             run(parallel) = suppress_warnings(NO_SWAP_WARNING, MEMORY_HOT_CHAINS_WARNING) do
                 sample(
                     backwards_compat_rng(3), model, update, 100;
-                    n_chains = 6, n_hot_chains = 2, num_warmup = 50, parallel = parallel, n_tries = 4, sample_kwargs...
+                    n_chains = 6, n_hot_chains = 2, num_warmup = 50, parallel = parallel, n_tries = 4, memory = memory, sample_kwargs...
                 )
             end
             serial = run(false)

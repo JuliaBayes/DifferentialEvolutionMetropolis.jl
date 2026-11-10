@@ -97,6 +97,35 @@
         @test all(isa(x, DifferentialEvolutionMetropolis.DifferentialEvolutionSample) for x in samples)
     end
 
+    @testset "memoryless chains are updated in turn" begin
+        model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([0.0]))
+        _, state = AbstractMCMC.step(backwards_compat_rng(1), model, setup_de_update(; n_dims = 1); n_chains = 3, memory = false, silent = true)
+        for i in 1:3
+            picked = DifferentialEvolutionMetropolis.pick_chains(state, i, Val(2))
+            expected = [j < i ? state.xₚ[j] : state.x[j] for j in 1:3 if j != i]
+            @test all(p -> count(e -> e === p, expected) == 1, picked)
+            @test picked[1] !== picked[2]
+        end
+    end
+
+    @testset "parallel without memory" begin
+        rng = backwards_compat_rng(1)
+        model = AbstractMCMC.LogDensityModel(IsotropicNormalModel([-5.0, 5.0]))
+        kwargs = (; n_chains = 4, memory = false, silent = true)
+        @test_throws ArgumentError AbstractMCMC.step(rng, model, setup_de_update(); parallel = true, kwargs...)
+        @test_throws ArgumentError deMC(model, 10; parallel = true, progress = false, silent = true)
+        @test_throws ArgumentError suppress_warnings(r"n_tries > 1") do
+            AbstractMCMC.step(rng, model, setup_snooker_update(); parallel = true, n_tries = 2, kwargs...)
+        end
+        _, state = AbstractMCMC.step(rng, model, setup_de_update(); kwargs...)
+        @test_throws ArgumentError AbstractMCMC.step(rng, model, setup_de_update(), state; parallel = true)
+        _, state = AbstractMCMC.step(rng, model, setup_subspace_sampling(); kwargs...)
+        @test_throws ArgumentError AbstractMCMC.step_warmup(rng, model, setup_subspace_sampling(), state; parallel = true)
+        _, state = AbstractMCMC.step(rng, model, setup_de_update(); parallel = true, n_tries = 2, kwargs...)
+        _, state = AbstractMCMC.step(rng, model, setup_de_update(), state; parallel = true)
+        @test all(isfinite, state.ld)
+    end
+
     @testset "Sample using memory deMC" begin
         rng = backwards_compat_rng(1234)
         model = IsotropicNormalModel([-5.0, 5.0])

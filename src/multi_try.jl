@@ -93,7 +93,7 @@ end
 trial_logdensity(model, x, ld) = ld > -Inf ? logdensity(model, x) : ld
 
 # Trials with an offset of -Inf are rejected by the proposal and are not evaluated
-function evaluate_trials!(lds::Array{T, 2}, xs, model, chain_models, parallel::Bool) where {T <: Real}
+function evaluate_trials!(lds::AbstractArray{T}, xs, model, chain_models, parallel::Bool) where {T <: Real}
     if parallel
         Threads.@threads for m in eachindex(xs)
             lds[m] = trial_logdensity(chain_models[m], xs[m], lds[m])
@@ -147,8 +147,10 @@ function accept_trial!(buffers::DifferentialEvolutionMetropolisMultiTryBuffers, 
     return false
 end
 
+multi_try_update!(model, state, sampler, parallel::Bool) = multi_try_update!(state.memory, model, state, sampler, parallel)
+
 # Forward and reference trials are each evaluated in one loop over every (trial, chain)
-function multi_try_update!(model, state, sampler, parallel::Bool)
+function multi_try_update!(::AbstractDifferentialEvolutionMemory, model, state, sampler, parallel::Bool)
     buffers = state.multi_try
     n_chains = length(state.x)
     foreach_chain(i -> propose_forward!(buffers, state, sampler, i), n_chains, parallel)
@@ -156,5 +158,18 @@ function multi_try_update!(model, state, sampler, parallel::Bool)
     foreach_chain(i -> propose_reference!(buffers, state, sampler, i), n_chains, parallel)
     evaluate_trials!(buffers.reference_ld, buffers.reference, model, state.chain_models, parallel)
     foreach_chain(i -> accept_trial!(buffers, state, i), n_chains, parallel)
+    return nothing
+end
+
+# Memoryless chains are updated in turn, so only each chain's trials are evaluated in parallel
+function multi_try_update!(::DifferentialEvolutionMemoryless, model, state, sampler, parallel::Bool)
+    buffers = state.multi_try
+    for i in eachindex(state.x)
+        propose_forward!(buffers, state, sampler, i)
+        evaluate_trials!(buffers.forward_ld_view[i], buffers.forward_view[i], model, state.chain_models, parallel)
+        propose_reference!(buffers, state, sampler, i)
+        evaluate_trials!(buffers.reference_ld_view[i], buffers.reference_view[i], model, state.chain_models, parallel)
+        accept_trial!(buffers, state, i)
+    end
     return nothing
 end

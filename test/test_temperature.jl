@@ -244,6 +244,7 @@
             n_chains = 2,
             n_hot_chains = 2,
             parallel = true,
+            n_tries = 2,
             rng = rng,
             memory = false
         )

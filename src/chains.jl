@@ -17,15 +17,17 @@ function create_sample(
     )
 end
 
+# Chains are updated in order, so chains before `current_chain` have their new position in `xₚ`
 @generated function pick_chains(
         state::DifferentialEvolutionState{T, A, L, M},
         current_chain::Int,
         ::Val{N}
     ) where {T, A, L, M <: DifferentialEvolutionMemoryless, N}
-    exprs = [:(x[indices[$i]]) for i in 1:N]
+    exprs = [:(indices[$i] < current_chain ? xₚ[indices[$i]] : x[indices[$i]]) for i in 1:N]
     return quote
         rng = state.rngs[current_chain]
         x = state.x
+        xₚ = state.xₚ
         memory = state.memory
         indices = memory.indices_INTERNAL[current_chain]
         ordered_indices = memory.ordered_indices_INTERNAL[current_chain]
@@ -171,6 +173,20 @@ function update_state(
     return _update_state(state, swap_positions, memory, adaptive_state, temperature_ladder, rngs, new_state, order_state)
 end
 
+const MEMORYLESS_PARALLEL_ERROR = "`parallel = true` is not supported with `memory = false`, as memoryless chains are updated in turn. " *
+    "Use `memory = true`, or `n_tries > 1` to evaluate the multiple-try proposals of each chain in parallel."
+
+check_parallel(parallel::Bool, memory::Bool, n_tries::Int) =
+    parallel && !memory && n_tries == 1 && throw(ArgumentError(MEMORYLESS_PARALLEL_ERROR))
+
+# Memoryless chains are updated in turn, multiple-try states still evaluate each chain's trials in parallel
+update_in_parallel(state::DifferentialEvolutionState, parallel::Bool) = update_in_parallel(state.memory, state.multi_try, parallel)
+update_in_parallel(::AbstractDifferentialEvolutionMemory, multi_try, parallel::Bool) = parallel
+function update_in_parallel(::DifferentialEvolutionMemoryless, multi_try, parallel::Bool)
+    check_parallel(parallel, false, n_tries(multi_try))
+    return false
+end
+
 function update_chain!(model, state, offset, i)
     if isinf(offset) & (sign(offset) == -1.0)
         copyto!(state.xₚ[i], state.x[i])
@@ -207,6 +223,7 @@ function automatically fixes adaptive parameters before sampling.
 
 # Keyword Arguments
 - `parallel`: Whether to run chains in parallel using threading. Defaults to `false`. Advisable for slow models.
+  Memoryless states only evaluate each chain's multiple-try proposals in parallel and throw an `ArgumentError` without them.
 - `update_memory`: Whether to update the memory with new positions (for memory-based samplers). Defaults to `true`. Over writes memory options given at initialization.
 - `kwargs...`: Additional keyword arguments passed to update functions (see https://turinglang.org/AbstractMCMC.jl/stable/api/#Common-keyword-arguments)
 
@@ -246,7 +263,7 @@ function step(
     # loop through chains running the update
     if uses_multi_try(sampler, state)
         multi_try_update!(model, state, sampler, parallel)
-    elseif parallel
+    elseif update_in_parallel(state, parallel)
         Threads.@threads for i in eachindex(x)
             offset, = proposal!(state.xₚ[i], x[i], state, sampler, i)
             update_chain!(state.chain_models[i], state, offset, i)
@@ -480,6 +497,7 @@ function step(
     )
     model = model_wrapper.logdensity
     n_tries = check_n_tries(sampler, n_tries)
+    check_parallel(parallel, memory, n_tries)
     initial_position = resolve_initial_position(
         initial_position, rng, n_chains + n_hot_chains,
         memory ? something(N₀, n_chains + n_hot_chains) : 0;

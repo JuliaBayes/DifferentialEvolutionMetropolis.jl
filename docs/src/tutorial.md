@@ -164,7 +164,8 @@ There are two levels of parallelism possible:
   Handled entirely by `AbstractMCMC.jl`.
   For example `sample(model, sampler, MCMCThreads(), 1000, 3; n_chains = 10)` would draw 1000 samples from 3 completely separate ensembles each using 10 chains within the ensemble.
   The 3 ensembles would be run concurrently with multi-threading.
-- **Within one interacting DE ensemble:** `parallel = false` chains within the ensemble update sequentially, with `parallel = true` these can be multithreaded and update in parallel.
+- **Within one interacting DE ensemble:** `parallel = false` chains within the ensemble update sequentially, with `parallel = true` and `memory = true` these can be multithreaded and update in parallel.
+  Without memory each chain proposes from the current positions of the others, so chains must update in turn and `parallel = true` requires `n_tries > 1` (see below).
   For example For example `sample(model, sampler, MCMCDistributed(), 1000, 3; n_chains = 10, parallel = true)` would draw 1000 samples from 3 completely separate ensembles each using 10 chains within the ensemble.
   The ensembles would run in parallel using `Distributed.jl`, while within each ensemble, updates are multithreaded.
 
@@ -172,7 +173,7 @@ There are two levels of parallelism possible:
 using AbstractMCMC, DifferentialEvolutionMetropolis
 
 # One interacting ensemble, threaded chain updates:
-deMC(model, 1000; parallel = true)
+deMC(model, 1000; memory = true, parallel = true)
 
 sampler = setup_sampler_scheme(setup_de_update())
 # Four independent ensembles, each containing eight interacting chains:
@@ -188,6 +189,7 @@ The sampler is thread-safe by using per-chain copies of shared resources, includ
 
 When there are more threads than chains, `n_tries` gives each chain several candidate proposals per step (multiple-try Metropolis).
 With `parallel = true` all candidates across all chains are evaluated in one threaded loop.
+With `memory = false` chains are updated in turn, so only the candidates of one chain are evaluated in parallel.
 This increases the number of log-density evaluations per step to up to `n_chains * (2 * n_tries - 1)`, so it is only worthwhile when evaluations are expensive and threads would otherwise be idle.
 Only the differential evolution and subspace updates use multiple tries, other updates in a scheme take a single proposal.
 
