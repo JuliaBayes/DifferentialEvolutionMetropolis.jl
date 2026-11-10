@@ -1,6 +1,13 @@
 struct DEMAdaptiveStatic{T} <:
     AbstractDEMAdaptiveState{T} end
 
+"""
+    DEMSample
+
+Sample returned by each step, with fields `x` (position of each output chain) and `ld` (log density at each position).
+
+Hot chains are excluded when parallel tempering is used.
+"""
 struct DEMSample{V <: AbstractVector{<:Real}, VV <: AbstractVector{V}}
     "current position"
     x::VV
@@ -16,6 +23,16 @@ function create_sample(
         copy(state.ldₚ_smpl_view)
     )
 end
+
+"""
+    pick_chains(state::DEMState, current_chain::Int, ::Val{N})
+
+Return a tuple of `N` distinct positions, drawn without replacement using `state.rngs[current_chain]`.
+
+Without memory these are other live chains, excluding `current_chain`; with memory they are drawn from the memory archive.
+If `N` exceeds `n_preallocated_indices` (default 3, see [`deMC`](@ref)) the index buffers are resized with a warning.
+"""
+function pick_chains end
 
 # Chains are updated in order, so chains before `current_chain` have their new position in `xₚ`
 @generated function pick_chains(
@@ -174,9 +191,9 @@ function update_state(
 end
 
 # Sequential updates without multiple tries run one chain at a time even with `parallel = true`
-cannot_use_parallel(sampler::AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerSingleTry}, n_tries::Int) = true
-cannot_use_parallel(sampler::AbstractDEMSampler{AbstractDEMSamplerSerial, AbstractDEMSamplerMultipleTry}, n_tries::Int) = !(n_tries > 1)
-cannot_use_parallel(sampler::AbstractDEMSampler{AbstractDEMSamplerMultiThread}, n_tries::Int) = false
+cannot_use_parallel(sampler::AbstractDEMSampler{DEMSamplerSerial, DEMSamplerSingleTry}, n_tries::Int) = true
+cannot_use_parallel(sampler::AbstractDEMSampler{DEMSamplerSerial, DEMSamplerMultipleTry}, n_tries::Int) = !(n_tries > 1)
+cannot_use_parallel(sampler::AbstractDEMSampler{DEMSamplerMultiThread}, n_tries::Int) = false
 
 function check_parallel(sampler::AbstractDEMMetaSampler, parallel::Bool, memory::Bool, n_tries::Int)
     if parallel && !memory && cannot_use_parallel(sampler, n_tries)
@@ -237,7 +254,7 @@ end
 # if we are not using memory and not parallel compatible, we ignore parallel, the multi-try method here is more specific so takes precedence
 function update_chains!(
         state::DEMState{<:Any, <:Any, <:Any, <:DEMMemoryless},
-        sampler::AbstractDEMSampler{AbstractDEMSamplerSerial}, parallel::Bool
+        sampler::AbstractDEMSampler{DEMSamplerSerial}, parallel::Bool
     )
     propose_and_update_chains!(state, sampler)
 
@@ -321,7 +338,7 @@ Fix adaptive parameters of a sampler to their current adapted values.
 
 For non-adaptive samplers, returns the sampler unchanged. For adaptive samplers,
 returns a new sampler with the adaptive parameters fixed to their current values
-in the `adaptive_state`.
+in the `adaptive_state`. A custom adaptive update should define a method for its adaptive state.
 
 # Arguments
 - `sampler`: The differential evolution sampler to fix
@@ -335,7 +352,7 @@ in the `adaptive_state`.
 using DifferentialEvolutionMetropolis, Random, Distributions
 
 # This function is typically used after warmup/adaptation phase
-# fixed_sampler = fix_sampler(adaptive_sampler, state.adaptive_state)
+# fixed_sampler = DifferentialEvolutionMetropolis.fix_sampler(adaptive_sampler, state.adaptive_state)
 ```
 
 See also [`fix_sampler_state`](@ref).
@@ -369,7 +386,7 @@ adaptive components. Adaptive updates inside sampler schemes are fixed as well.
 using DifferentialEvolutionMetropolis, Random, Distributions
 
 # This function is typically used after warmup/adaptation phase
-# fixed_sampler, fixed_state = fix_sampler_state(sampler, state)
+# fixed_sampler, fixed_state = DifferentialEvolutionMetropolis.fix_sampler_state(sampler, state)
 ```
 
 See also [`fix_sampler`](@ref).
@@ -424,6 +441,15 @@ function initialize_adaptive_state(
     return initialize_adaptive_state(sampler, model_wrapper, n_chains, Float64)
 end
 
+"""
+    initialize_adaptive_state(sampler::AbstractDEMMetaSampler, model_wrapper::LogDensityModel, n_chains::Int, ::Type{T})
+
+Create the adaptive state of `sampler` at the start of sampling, with `T` the position element type.
+
+The fallback returns a static (non-adaptive) state.
+An adaptive update defines a method returning its own [`DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState`](@ref),
+along with methods for `step_warmup` and [`DifferentialEvolutionMetropolis.fix_sampler`](@ref).
+"""
 function initialize_adaptive_state(
         sampler::AbstractDEMMetaSampler,
         model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}
@@ -431,15 +457,6 @@ function initialize_adaptive_state(
     return DEMAdaptiveStatic{T}()
 end
 
-"""
-    resolve_initial_position(initial_position, rng, n_chains, n_memory; stratify = true)
-
-Convert a user-supplied `initial_position` into `nothing` or a vector of parameter vectors.
-
-Extensions add methods for other input types (e.g. Pathfinder results). These should return
-`n_chains` chain starting positions followed by `n_memory` initial memory positions.
-The default methods return the input unchanged and ignore `stratify`.
-"""
 resolve_initial_position(initial_position::Nothing, rng, n_chains, n_memory; stratify = true) = initial_position
 resolve_initial_position(initial_position::AbstractVector{<:AbstractVector{<:Real}}, rng, n_chains, n_memory; stratify = true) = initial_position
 function resolve_initial_position(initial_position, rng, n_chains, n_memory; stratify = true)
@@ -532,9 +549,10 @@ function step(
     model = model_wrapper.logdensity
     n_tries = check_n_tries(sampler, n_tries)
     check_parallel(sampler, parallel, memory, n_tries)
+    default_N₀ = cld(10 * dimension(model), n_chains + n_hot_chains) * (n_chains + n_hot_chains)
     initial_position = resolve_initial_position(
         initial_position, rng, n_chains + n_hot_chains,
-        memory ? something(N₀, n_chains + n_hot_chains) : 0;
+        memory ? something(N₀, max(default_N₀ - n_chains - n_hot_chains, 0)) : 0;
         stratify = stratify_initial_position
     )
     if isnothing(T)
@@ -637,7 +655,7 @@ function step(
             append!(mem_x, extra_memory)
         end
         if isnothing(N₀)
-            N₀ = max(2 * n_true_chains, length(mem_x))
+            N₀ = max(default_N₀, length(mem_x))
         end
         if rem(N₀, n_true_chains) != 0
             push!(
@@ -657,10 +675,13 @@ function step(
             mem_x = mem_x[(end - N₀ + 1):end]
         end
 
-        total_memory_size = memory_size * n_true_chains
-        if total_memory_size < N₀ + n_true_chains
-            error("memory_size (currently $memory_size) is too small for the initial memory N₀ (currently $N₀) and number of chains (currently $n_true_chains). The total memory size (memory_size * n_chains = $total_memory_size) must be at least N₀ + n_chains = $(N₀ + n_true_chains). Consider specifying a larger memory_size.")
+        memory_increment = memory_size * n_true_chains
+        if memory_refill && memory_increment < N₀ + n_true_chains
+            error("memory_size (currently $memory_size) is too small for the initial memory N₀ (currently $N₀) and number of chains (currently $n_true_chains). With memory_refill = true the total memory size (memory_size * n_chains = $memory_increment) must be at least N₀ + n_chains = $(N₀ + n_true_chains). Consider specifying a larger memory_size.")
+        elseif memory_size < 1
+            error("memory_size (currently $memory_size) must be at least 1.")
         end
+        total_memory_size = memory_refill ? memory_increment : N₀ + memory_increment
         if (memory_size == 1001) & memory_refill
             push!(log, "   Using memory refill with default memory size of 1001, storing a maximum of $total_memory_size chains.")
             push!(log, "   Consider tailoring memory_size keyword argument to control memory usage!")
@@ -682,7 +703,7 @@ function step(
         end
 
         memory = DEMMemoryFill{T, typeof(mem_x), typeof(memory_method)}(
-            true_memory, memory_method, memory_refill, length(true_memory),
+            true_memory, memory_method, memory_refill, memory_increment,
             [fill(1, n_preallocated_indices) for _ in 1:n_true_chains],
             [Vector{Int}(undef, n_preallocated_indices - 1) for _ in 1:n_true_chains]
         )
