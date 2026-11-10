@@ -93,8 +93,6 @@ per_cluster_metric
 ```@docs
 DifferentialEvolutionMetropolis.step
 DifferentialEvolutionMetropolis.step_warmup
-DifferentialEvolutionMetropolis.fix_sampler
-DifferentialEvolutionMetropolis.fix_sampler_state
 DifferentialEvolutionMetropolis.resolve_initial_position
 ```
 

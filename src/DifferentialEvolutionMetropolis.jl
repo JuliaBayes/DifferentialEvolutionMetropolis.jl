@@ -1,6 +1,6 @@
 module DifferentialEvolutionMetropolis
 export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_random_order_scheme, setup_fixed_order_scheme, setup_swap_update, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
-export step, step_warmup, fix_sampler
+export step, step_warmup
 export DifferentialEvolutionOutput
 export deMC, deMCzs, DREAMz
 export r̂_stopping_criteria
@@ -21,16 +21,61 @@ import Random: AbstractRNG, Xoshiro, default_rng, rand!, seed!, rand
 import AbstractMCMC: LogDensityModel, AbstractSampler, step, step_warmup, sample, bundle_samples, chainsstack
 import AbstractMCMC
 
+"""
+    AbstractDifferentialEvolutionSampler
+
+Supertype of every update and sampler scheme; a custom update subtypes it and implements [`DifferentialEvolutionMetropolis.proposal!`](@ref).
+"""
 abstract type AbstractDifferentialEvolutionSampler <: AbstractSampler end
 
+"""
+    chains_required(sampler::AbstractDifferentialEvolutionSampler)
+
+Minimum number of chains `sampler` needs when sampling without memory, since its proposals then draw from the other live chains.
+
+The fallback for any `AbstractDifferentialEvolutionSampler` is 3.
+Define a method for a custom update that needs a different number, e.g. `chains_required(::MyUpdate) = 1` for a random walk.
+"""
 chains_required(::AbstractDifferentialEvolutionSampler) = 3  # conservative fallback, COV_EXCL_LINE
 
+"""
+    proposal!(xₚ, x, state::DifferentialEvolutionState, sampler::AbstractDifferentialEvolutionSampler, current_state::Int)
+
+Write a proposal for chain `current_state`, made from position `x`, into `xₚ`.
+
+Every update must implement this.
+Use `state.rngs[current_state]` for random draws, as chains may be updated in parallel.
+
+# Returns
+- A named tuple with at least `offset`, the log Hastings correction (`0.0` for a symmetric proposal, `-Inf` to reject the proposal).
+"""
+function proposal! end
+
+"""
+    AbstractDifferentialEvolutionAdaptiveState{T}
+
+Supertype of the adaptive state of a sampler, held in [`DifferentialEvolutionMetropolis.DifferentialEvolutionState`](@ref), with `T` the position element type.
+"""
 abstract type AbstractDifferentialEvolutionAdaptiveState{T} end
 
 abstract type AbstractDifferentialEvolutionMemory{T} end
 
 abstract type AbstractDifferentialEvolutionTemperatureLadder{T} end
 
+"""
+    DifferentialEvolutionState
+
+State of all chains, passed between steps and to [`DifferentialEvolutionMetropolis.proposal!`](@ref).
+
+Fields a custom update may read:
+- `x`: current position of each chain.
+- `ld`: log density at each current position.
+- `rngs`: per-chain random number generators.
+- `adaptive_state`: the [`DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState`](@ref) of the sampler.
+
+Draw other chains or memory positions with [`DifferentialEvolutionMetropolis.pick_chains`](@ref).
+The remaining fields are preallocated buffers and should not be modified.
+"""
 struct DifferentialEvolutionState{
         T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},

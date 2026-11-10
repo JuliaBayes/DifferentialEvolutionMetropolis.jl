@@ -1,6 +1,13 @@
 struct DifferentialEvolutionAdaptiveStatic{T} <:
     AbstractDifferentialEvolutionAdaptiveState{T} end
 
+"""
+    DifferentialEvolutionSample
+
+Sample returned by each step, with fields `x` (position of each output chain) and `ld` (log density at each position).
+
+Hot chains are excluded when parallel tempering is used.
+"""
 struct DifferentialEvolutionSample{V <: AbstractVector{<:Real}, VV <: AbstractVector{V}}
     "current position"
     x::VV
@@ -16,6 +23,16 @@ function create_sample(
         copy(state.ldₚ_smpl_view)
     )
 end
+
+"""
+    pick_chains(state::DifferentialEvolutionState, current_chain::Int, ::Val{N})
+
+Return a tuple of `N` distinct positions, drawn without replacement using `state.rngs[current_chain]`.
+
+Without memory these are other live chains, excluding `current_chain`; with memory they are drawn from the memory archive.
+If `N` exceeds `n_preallocated_indices` (default 3, see [`deMC`](@ref)) the index buffers are resized with a warning.
+"""
+function pick_chains end
 
 @generated function pick_chains(
         state::DifferentialEvolutionState{T, A, L, M},
@@ -283,7 +300,7 @@ Fix adaptive parameters of a sampler to their current adapted values.
 
 For non-adaptive samplers, returns the sampler unchanged. For adaptive samplers,
 returns a new sampler with the adaptive parameters fixed to their current values
-in the `adaptive_state`.
+in the `adaptive_state`. A custom adaptive update should define a method for its adaptive state.
 
 # Arguments
 - `sampler`: The differential evolution sampler to fix
@@ -297,7 +314,7 @@ in the `adaptive_state`.
 using DifferentialEvolutionMetropolis, Random, Distributions
 
 # This function is typically used after warmup/adaptation phase
-# fixed_sampler = fix_sampler(adaptive_sampler, state.adaptive_state)
+# fixed_sampler = DifferentialEvolutionMetropolis.fix_sampler(adaptive_sampler, state.adaptive_state)
 ```
 
 See also [`fix_sampler_state`](@ref).
@@ -384,6 +401,15 @@ function initialize_adaptive_state(
     return initialize_adaptive_state(sampler, model_wrapper, n_chains, Float64)
 end
 
+"""
+    initialize_adaptive_state(sampler::AbstractDifferentialEvolutionSampler, model_wrapper::LogDensityModel, n_chains::Int, ::Type{T})
+
+Create the adaptive state of `sampler` at the start of sampling, with `T` the position element type.
+
+The fallback returns a static (non-adaptive) state.
+An adaptive update defines a method returning its own [`DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState`](@ref),
+along with methods for `step_warmup` and [`DifferentialEvolutionMetropolis.fix_sampler`](@ref).
+"""
 function initialize_adaptive_state(
         sampler::AbstractDifferentialEvolutionSampler,
         model_wrapper::LogDensityModel, n_chains::Int, ::Type{T}

@@ -15,9 +15,9 @@ The stopping criterion function has the following signature:
 function your_stopping_criteria(
     rng::AbstractRNG,
     model::AbstractModel,
-    sampler::AbstractDifferentialEvolutionSampler,
-    samples::Vector{<:DifferentialEvolutionSample},
-    state::DifferentialEvolutionState,
+    sampler::DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler,
+    samples::Vector{<:DifferentialEvolutionMetropolis.DifferentialEvolutionSample},
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState,
     iteration::Int;
     kwargs...
 )
@@ -41,13 +41,13 @@ using DifferentialEvolutionMetropolis, AbstractMCMC
 function max_iterations_stopping(
     rng::AbstractRNG,
     model::AbstractModel,
-    sampler::AbstractDifferentialEvolutionSampler,
-    samples::Vector{<:DifferentialEvolutionSample},
-    state::DifferentialEvolutionState{T, A},
+    sampler::DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler,
+    samples::Vector{<:DifferentialEvolutionMetropolis.DifferentialEvolutionSample},
+    state::DifferentialEvolutionMetropolis.DifferentialEvolutionState{T, A},
     iteration::Int;
     max_iterations::Int = 10000,
     kwargs...
-) where {T<:Real, A<:AbstractDifferentialEvolutionAdaptiveState{T}}
+) where {T<:Real, A<:DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState{T}}
     if iteration >= max_iterations
         println("Reached maximum iterations ($max_iterations), stopping.")
         return true
@@ -324,4 +324,35 @@ result = sample(
 
 plot(result.samples[:, :, 1])
 plot(result.samples[:, :, 2])
+```
+
+## Custom Sampler API
+
+These functions and types are not exported, so access them with the `DifferentialEvolutionMetropolis.` prefix.
+
+**Warning:** the custom sampler API may receive breaking changes in minor version (2.x.0) updates.
+
+See also [`DifferentialEvolutionMetropolis.step`](@ref) and [`DifferentialEvolutionMetropolis.step_warmup`](@ref).
+
+### Types
+
+```@docs
+DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionSampler
+DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState
+DifferentialEvolutionMetropolis.DifferentialEvolutionState
+DifferentialEvolutionMetropolis.DifferentialEvolutionSample
+DifferentialEvolutionMetropolis.ProposalScratch
+```
+
+### Functions
+
+```@docs
+DifferentialEvolutionMetropolis.proposal!
+DifferentialEvolutionMetropolis.chains_required
+DifferentialEvolutionMetropolis.pick_chains
+DifferentialEvolutionMetropolis.initialize_adaptive_state
+DifferentialEvolutionMetropolis.fix_sampler
+DifferentialEvolutionMetropolis.fix_sampler_state
+DifferentialEvolutionMetropolis.prepare_scratch!
+DifferentialEvolutionMetropolis.chain_buffers
 ```

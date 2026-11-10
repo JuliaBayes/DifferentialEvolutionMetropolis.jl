@@ -1,4 +1,11 @@
-# Per-chain proposal buffers held by an update, only reallocated when the element type, number of chains or dimensions changes
+"""
+    ProposalScratch{N}()
+
+Per-chain proposal buffers held by an update: `N` vectors per chain, with the element type and length of the positions.
+
+The buffers are sized by [`DifferentialEvolutionMetropolis.prepare_scratch!`](@ref) and only reallocated when the element type, number of chains or dimensions changes.
+Access them with [`DifferentialEvolutionMetropolis.chain_buffers`](@ref).
+"""
 mutable struct ProposalScratch{N}
     "`Vector{NTuple{N, Vector{T}}}` for the element type `T` of the positions"
     buffers::Any
@@ -25,12 +32,26 @@ function ensure_size!(scratch::ProposalScratch{N}, ::Type{T}, n_chains::Int, n_d
     return nothing
 end
 
-# Buffers for chain `i`, `T` must be the element type the scratch was last prepared for
+"""
+    chain_buffers(scratch::ProposalScratch{N}, ::Type{T}, i::Int)
+
+Return the `N` buffers of chain `i` as a tuple of `Vector{T}`.
+
+`T` must be the element type the scratch was last prepared for, i.e. `eltype(x)` inside [`DifferentialEvolutionMetropolis.proposal!`](@ref).
+"""
 function chain_buffers(scratch::ProposalScratch{N}, ::Type{T}, i::Int) where {N, T}
     return (scratch.buffers::Vector{NTuple{N, Vector{T}}})[i]
 end
 
-# Must be called before chains are updated, as proposals may run in parallel and cannot resize safely
+"""
+    prepare_scratch!(sampler::AbstractDifferentialEvolutionSampler, state)
+    prepare_scratch!(scratch::ProposalScratch, state)
+
+Size the scratch buffers of `sampler` for `state`, called before each step's chain updates since proposals may run in parallel and cannot resize safely.
+
+The fallback does nothing.
+An update holding a [`DifferentialEvolutionMetropolis.ProposalScratch`](@ref) should define a method that calls the `ProposalScratch` method on it.
+"""
 prepare_scratch!(sampler::AbstractDifferentialEvolutionSampler, state) = nothing
 function prepare_scratch!(scratch::ProposalScratch, state)
     x = first(state.x)
