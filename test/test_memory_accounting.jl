@@ -293,6 +293,7 @@ using Random, AbstractMCMC, LogDensityProblems
         @test DEM.memory_picks(setup_snooker_update()) == 4
         @test DEM.memory_picks(subspace) == 6
         @test DEM.memory_picks(setup_subspace_sampling(; δ = Categorical([0.1, 0.1, 0.8]))) == 6
+        @test DEM.memory_picks(setup_subspace_sampling(; δ = truncated(Poisson(3); lower = 1))) == 6
         @test DEM.memory_picks(setup_sampler_scheme(de, subspace)) == 6
         @test DEM.target_memory_size(de, n_chains) == target(n_chains, 3)
 
