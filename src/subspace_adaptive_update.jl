@@ -118,19 +118,18 @@ to the adaptation, and jumps are recorded once the running variance is available
 
 # Example
 ```@example step_warmup
-using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
-struct ExampleNormalTarget end
-LogDensityProblems.dimension(::ExampleNormalTarget) = 2
-LogDensityProblems.capabilities(::ExampleNormalTarget) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::ExampleNormalTarget, x) = -sum(abs2, x) / 2
-model_wrapper = AbstractMCMC.LogDensityModel(ExampleNormalTarget())
+# Setup for warmup step example
 rng = Random.default_rng()
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 sampler = setup_subspace_sampling()
 
-# Initialize an adaptive state, then take a warmup step
-_, state = step(rng, model_wrapper, sampler)
-sample, new_state = step_warmup(rng, model_wrapper, sampler, state; parallel = false)
+# Initialize state and perform a warmup step
+_, state = AbstractMCMC.step(rng, model_wrapper, sampler)
+sample, new_state = AbstractMCMC.step_warmup(rng, model_wrapper, sampler, state; parallel=false)
 ```
 
 See also [`step`](@ref), [`fix_sampler`](@ref).

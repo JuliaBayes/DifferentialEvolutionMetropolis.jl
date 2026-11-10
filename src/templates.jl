@@ -23,13 +23,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMC
-using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
-struct ExampleNormalTarget end
-LogDensityProblems.dimension(::ExampleNormalTarget) = 2
-LogDensityProblems.capabilities(::ExampleNormalTarget) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::ExampleNormalTarget, x) = -sum(abs2, x) / 2
-model_wrapper = AbstractMCMC.LogDensityModel(ExampleNormalTarget())
+# Define a simple log-density function
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run differential evolution MCMC
 result = deMC(model_wrapper, 1000; n_chains = 10, parallel = false)
@@ -137,13 +136,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMCzs
-using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
-struct ExampleNormalTarget end
-LogDensityProblems.dimension(::ExampleNormalTarget) = 2
-LogDensityProblems.capabilities(::ExampleNormalTarget) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::ExampleNormalTarget, x) = -sum(abs2, x) / 2
-model_wrapper = AbstractMCMC.LogDensityModel(ExampleNormalTarget())
+# Define a simple log-density function
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run differential evolution MCMC
 result = deMCzs(model_wrapper, 1000; n_chains = 3)
@@ -248,13 +246,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example DREAMz
-using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
-struct ExampleNormalTarget end
-LogDensityProblems.dimension(::ExampleNormalTarget) = 2
-LogDensityProblems.capabilities(::ExampleNormalTarget) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::ExampleNormalTarget, x) = -sum(abs2, x) / 2
-model_wrapper = AbstractMCMC.LogDensityModel(ExampleNormalTarget())
+# Define a simple log-density function
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run DREAM with subspace sampling
 result = DREAMz(model_wrapper, 1000; n_chains = 10, memory = false)

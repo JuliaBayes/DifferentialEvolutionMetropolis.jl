@@ -40,17 +40,16 @@ the stationary portion of the chains.
 
 # Example
 ```@example convergence
-using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
-
-struct ExampleNormalTarget end
-LogDensityProblems.dimension(::ExampleNormalTarget) = 2
-LogDensityProblems.capabilities(::ExampleNormalTarget) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::ExampleNormalTarget, x) = -sum(abs2, x) / 2
-model_wrapper = AbstractMCMC.LogDensityModel(ExampleNormalTarget())
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 using MCMCDiagnosticTools
 
+# Create a simple model
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
+
 # Setup sampler
-sampler = setup_sampler_scheme(setup_de_update(), setup_snooker_update())
+sampler = setup_random_order_scheme(setup_de_update(n_dims = 2), setup_snooker_update(); w = [0.9, 0.1])
 
 # Use with adaptive stopping criterion
 rng = Random.default_rng()
@@ -68,7 +67,7 @@ function DifferentialEvolutionMetropolis.r̂_stopping_criteria(
         state::DifferentialEvolutionMetropolis.DEMState{T, A, L, M, Model, B, V, VV},
         iteration::Int;
         check_every::Int = 1000,
-        maximum_R̂::T = 1.2,
+        maximum_R̂::T = T(1.2),
         maximum_iterations::Int = 100000,
         minimum_iterations::Int = 0,
         kwargs...
@@ -122,14 +121,12 @@ $(DifferentialEvolutionMetropolis.abstract_mcmc_kwargs)
 
 # Example
 ```@example deMC_r
-using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables, MCMCDiagnosticTools
 
-struct ExampleNormalTarget end
-LogDensityProblems.dimension(::ExampleNormalTarget) = 2
-LogDensityProblems.capabilities(::ExampleNormalTarget) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::ExampleNormalTarget, x) = -sum(abs2, x) / 2
-model_wrapper = AbstractMCMC.LogDensityModel(ExampleNormalTarget())
-using MCMCDiagnosticTools
+# Define a simple log-density function
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run differential evolution MCMC with max 20 epochs
 result = deMC(model_wrapper, 1000, 20; warmup_epochs = 5, n_chains = 10, parallel = false)
@@ -186,17 +183,15 @@ $(DifferentialEvolutionMetropolis.abstract_mcmc_kwargs)
 
 # Example
 ```@example deMCzs_r
-using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables, MCMCDiagnosticTools
 
-struct ExampleNormalTarget end
-LogDensityProblems.dimension(::ExampleNormalTarget) = 2
-LogDensityProblems.capabilities(::ExampleNormalTarget) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::ExampleNormalTarget, x) = -sum(abs2, x) / 2
-model_wrapper = AbstractMCMC.LogDensityModel(ExampleNormalTarget())
-using MCMCDiagnosticTools
+# Define a simple log-density function
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run differential evolution MCMC
-result = deMCzs(model_wrapper, 1000; n_chains = 3, maximum_R̂ = 1.1)
+result = deMCzs(model_wrapper, 1000, 20; n_chains = 3, maximum_R̂ = 1.1)
 ```
 
 # Notes
@@ -250,17 +245,15 @@ $(DifferentialEvolutionMetropolis.abstract_mcmc_kwargs)
 
 # Example
 ```@example DREAMz_r
-using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables, MCMCDiagnosticTools
 
-struct ExampleNormalTarget end
-LogDensityProblems.dimension(::ExampleNormalTarget) = 2
-LogDensityProblems.capabilities(::ExampleNormalTarget) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::ExampleNormalTarget, x) = -sum(abs2, x) / 2
-model_wrapper = AbstractMCMC.LogDensityModel(ExampleNormalTarget())
-using MCMCDiagnosticTools
+# Define a simple log-density function
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run DREAM with subspace sampling
-result = DREAMz(model_wrapper, 1000; n_chains = 10, memory = false)
+result = DREAMz(model_wrapper, 1000, 20; n_chains = 10, memory = false)
 ```
 
 # Notes

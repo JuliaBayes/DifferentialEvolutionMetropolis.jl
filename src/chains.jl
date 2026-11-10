@@ -185,20 +185,26 @@ function check_parallel(sampler::AbstractDEMMetaSampler, parallel::Bool, memory:
     return nothing
 end
 
+function checked_logdensity(model, x)
+    value = logdensity(model, x)
+    isnan(value) && throw(DomainError(value, "Log density must not be NaN"))
+    return value
+end
+
 function update_chain!(model, state, offset, i)
     if isinf(offset) & (sign(offset) == -1.0)
         copyto!(state.xₚ[i], state.x[i])
         state.ldₚ[i] = state.ld[i]
         return false
     else
-        state.ldₚ[i] = logdensity(model, state.xₚ[i])
-        if log(rand(state.rngs[i])) >
+        state.ldₚ[i] = checked_logdensity(model, state.xₚ[i])
+        if log(rand(state.rngs[i])) <
                 (state.ldₚ[i] - state.ld[i]) / get_temperature(state.temperature_ladder, i) + offset
+            return true
+        else
             copyto!(state.xₚ[i], state.x[i])
             state.ldₚ[i] = state.ld[i]
             return false
-        else
-            return true
         end
     end
 end
@@ -469,25 +475,24 @@ $(generic_de_kwargs)
 
 # Examples
 ```@example step_function
-using DifferentialEvolutionMetropolis, AbstractMCMC, LogDensityProblems, Random
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
-struct ExampleNormalTarget end
-LogDensityProblems.dimension(::ExampleNormalTarget) = 2
-LogDensityProblems.capabilities(::ExampleNormalTarget) = LogDensityProblems.LogDensityOrder{0}()
-LogDensityProblems.logdensity(::ExampleNormalTarget, x) = -sum(abs2, x) / 2
-model_wrapper = AbstractMCMC.LogDensityModel(ExampleNormalTarget())
+# Setup
 rng = Random.default_rng()
-sampler = setup_sampler_scheme(setup_de_update(), setup_snooker_update())
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
+sampler = setup_random_order_scheme(setup_de_update(n_dims = 2), setup_snooker_update(); w = [0.9, 0.1])
 
 # Basic initialization with default settings
-sample, state = step(rng, model_wrapper, sampler)
+sample, state = AbstractMCMC.step(rng, model_wrapper, sampler)
 
 # Custom number of chains with memory disabled
-sample2, state2 = step(rng, model_wrapper, sampler; n_chains=10, memory=false)
+sample2, state2 = AbstractMCMC.step(rng, model_wrapper, sampler; n_chains=10, memory=false)
 
 # With custom initial positions
-init_pos = [randn(2) for _ in 1:8]
-sample3, state3 = step(rng, model_wrapper, sampler; initial_position=init_pos)
+init_pos = [randn(rng, 2) for _ in 1:8]
+sample3, state3 = AbstractMCMC.step(rng, model_wrapper, sampler; initial_position=init_pos)
 ```
 
 # Notes
@@ -563,7 +568,7 @@ function step(
         initial_position = [Vector{T}(position) for position in initial_position]
         current_N = length(initial_position)
         current_pars = length(initial_position[1])
-        if current_pars != dimension(model)
+        if any(position -> length(position) != dimension(model), initial_position)
             print_log(log)
             error("   Number of parameters in initial position must be equal to the number of parameters in the log density")
         end
@@ -614,10 +619,10 @@ function step(
     if parallel
         ld = Vector{eltype(x[1])}(undef, length(x))
         Threads.@threads for i in eachindex(x)
-            ld[i] = logdensity(chain_models[i], x[i])
+            ld[i] = checked_logdensity(chain_models[i], x[i])
         end
     else
-        ld = T[logdensity(model, xi) for xi in x]
+        ld = T[checked_logdensity(model, xi) for xi in x]
     end
 
     if memory && n_hot_chains > 0
