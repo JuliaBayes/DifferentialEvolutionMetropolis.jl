@@ -1,7 +1,7 @@
 module DifferentialEvolutionMetropolis
 export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_random_order_scheme, setup_fixed_order_scheme, setup_swap_update, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
 export step, step_warmup
-export DifferentialEvolutionOutput
+export DEMOutput
 export deMC, deMCzs, DREAMz
 export r̂_stopping_criteria
 
@@ -18,28 +18,87 @@ import StatsBase: wsample
 import StatsBase
 import LinearAlgebra: norm, normalize!, dot
 import Random: AbstractRNG, Xoshiro, default_rng, rand!, seed!, rand
-import AbstractMCMC: LogDensityModel, AbstractSampler, step, step_warmup, sample, bundle_samples, chainsstack
+import AbstractMCMC: LogDensityModel, step, step_warmup, sample, bundle_samples, chainsstack
 import AbstractMCMC
 
 """
-    AbstractDifferentialEvolutionSampler
+    AbstractDEMSamplerExecutionMode
 
-Supertype of every update and sampler scheme; a custom update subtypes it and implements [`DifferentialEvolutionMetropolis.proposal!`](@ref).
+Supertype of the execution mode parameter `E` of an [`DifferentialEvolutionMetropolis.AbstractDEMSampler`](@ref), declaring whether chains can update in parallel.
 """
-abstract type AbstractDifferentialEvolutionSampler <: AbstractSampler end
+abstract type AbstractDEMSamplerExecutionMode end
 
 """
-    chains_required(sampler::AbstractDifferentialEvolutionSampler)
+    AbstractDEMSamplerSerial
+
+Execution mode of an update whose proposals read other chains, so without memory the chains update in turn (unless multiple tries are used).
+"""
+abstract type AbstractDEMSamplerSerial <: AbstractDEMSamplerExecutionMode end
+
+"""
+    AbstractDEMSamplerMultiThread
+
+Execution mode of an update whose chains can update in parallel, even without memory.
+"""
+abstract type AbstractDEMSamplerMultiThread <: AbstractDEMSamplerExecutionMode end
+
+"""
+    AbstractDEMSamplerTryMode
+
+Supertype of the try mode parameter `T` of an [`DifferentialEvolutionMetropolis.AbstractDEMSampler`](@ref), declaring whether the update supports multiple tries.
+"""
+abstract type AbstractDEMSamplerTryMode end
+
+"""
+    AbstractDEMSamplerSingleTry
+
+Try mode of an update that takes one proposal per chain per step.
+"""
+abstract type AbstractDEMSamplerSingleTry <: AbstractDEMSamplerTryMode end
+
+"""
+    AbstractDEMSamplerMultipleTry
+
+Try mode of an update that supports `n_tries > 1`, which requires a symmetric proposal with zero Hastings correction.
+"""
+abstract type AbstractDEMSamplerMultipleTry <: AbstractDEMSamplerTryMode end
+
+"""
+    AbstractDEMMetaSampler
+
+Supertype of every update and sampler scheme in the package.
+"""
+abstract type AbstractDEMMetaSampler <: AbstractMCMC.AbstractSampler end
+
+"""
+    AbstractDEMSampler{E <: AbstractDEMSamplerExecutionMode, T <: AbstractDEMSamplerTryMode}
+
+Supertype of a single update; a custom update subtypes it and implements [`DifferentialEvolutionMetropolis.proposal!`](@ref).
+"""
+abstract type AbstractDEMSampler{
+    E <: AbstractDEMSamplerExecutionMode,
+    T <: AbstractDEMSamplerTryMode,
+} <: AbstractDEMMetaSampler end
+
+"""
+    AbstractDEMCompositeSampler
+
+Supertype of sampler schemes that combine several updates, such as [`setup_sampler_scheme`](@ref).
+"""
+abstract type AbstractDEMCompositeSampler <: AbstractDEMMetaSampler end
+
+"""
+    chains_required(sampler::AbstractDEMMetaSampler)
 
 Minimum number of chains `sampler` needs when sampling without memory, since its proposals then draw from the other live chains.
 
-The fallback for any `AbstractDifferentialEvolutionSampler` is 3.
+The fallback for any `AbstractDEMSampler` is 3, and a composite sampler requires the maximum over its updates.
 Define a method for a custom update that needs a different number, e.g. `chains_required(::MyUpdate) = 1` for a random walk.
 """
-chains_required(::AbstractDifferentialEvolutionSampler) = 3  # conservative fallback, COV_EXCL_LINE
+chains_required(::AbstractDEMSampler) = 3  # conservative fallback, COV_EXCL_LINE
 
 """
-    proposal!(xₚ, x, state::DifferentialEvolutionState, sampler::AbstractDifferentialEvolutionSampler, current_state::Int)
+    proposal!(xₚ, x, state::DEMState, sampler::AbstractDEMSampler, current_state::Int)
 
 Write a proposal for chain `current_state`, made from position `x`, into `xₚ`.
 
@@ -52,18 +111,18 @@ Use `state.rngs[current_state]` for random draws, as chains may be updated in pa
 function proposal! end
 
 """
-    AbstractDifferentialEvolutionAdaptiveState{T}
+    AbstractDEMAdaptiveState{T}
 
-Supertype of the adaptive state of a sampler, held in [`DifferentialEvolutionMetropolis.DifferentialEvolutionState`](@ref), with `T` the position element type.
+Supertype of the adaptive state of a sampler, held in [`DifferentialEvolutionMetropolis.DEMState`](@ref), with `T` the position element type.
 """
-abstract type AbstractDifferentialEvolutionAdaptiveState{T} end
+abstract type AbstractDEMAdaptiveState{T} end
 
-abstract type AbstractDifferentialEvolutionMemory{T} end
+abstract type AbstractDEMMemory{T} end
 
-abstract type AbstractDifferentialEvolutionTemperatureLadder{T} end
+abstract type AbstractDEMTemperatureLadder{T} end
 
 """
-    DifferentialEvolutionState
+    DEMState
 
 State of all chains, passed between steps and to [`DifferentialEvolutionMetropolis.proposal!`](@ref).
 
@@ -71,17 +130,18 @@ Fields a custom update may read:
 - `x`: current position of each chain.
 - `ld`: log density at each current position.
 - `rngs`: per-chain random number generators.
-- `adaptive_state`: the [`DifferentialEvolutionMetropolis.AbstractDifferentialEvolutionAdaptiveState`](@ref) of the sampler.
+- `adaptive_state`: the [`DifferentialEvolutionMetropolis.AbstractDEMAdaptiveState`](@ref) of the sampler.
 
 Draw other chains or memory positions with [`DifferentialEvolutionMetropolis.pick_chains`](@ref).
 The remaining fields are preallocated buffers and should not be modified.
 """
-struct DifferentialEvolutionState{
-        T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        M <: AbstractDifferentialEvolutionMemory{T},
+struct DEMState{
+        T <: Real, A <: AbstractDEMAdaptiveState{T},
+        L <: AbstractDEMTemperatureLadder{T},
+        M <: AbstractDEMMemory{T},
+        Model, B,
         V <: AbstractVector{T}, VV <: AbstractVector{V},
-        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray, B, O,
+        R <: AbstractRNG, V1 <: SubArray, V2 <: SubArray, O,
     }
     "current position"
     x::VV
@@ -118,7 +178,7 @@ function reseed!(chain_rng::Xoshiro, rng::AbstractRNG)
     return copy!(chain_rng, Xoshiro(rand(rng, UInt64), rand(rng, UInt64), rand(rng, UInt64), rand(rng, UInt64)))
 end
 
-function DifferentialEvolutionState(
+function DEMState(
         rng::R,
         x::VV,
         ld::V,
@@ -129,9 +189,9 @@ function DifferentialEvolutionState(
         n_tries::Int,
         order_state
     ) where {
-        T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
-        L <: AbstractDifferentialEvolutionTemperatureLadder{T},
-        M <: AbstractDifferentialEvolutionMemory{T},
+        T <: Real, A <: AbstractDEMAdaptiveState{T},
+        L <: AbstractDEMTemperatureLadder{T},
+        M <: AbstractDEMMemory{T},
         V <: AbstractVector{T}, VV <: AbstractVector{V},
         R <: AbstractRNG, Model,
     }
@@ -141,7 +201,7 @@ function DifferentialEvolutionState(
     ldₚ = copy(ld)
     x_smpl_view, ld_smpl_view = setup_view(x, ld, temperature_ladder)
     xₚ_smpl_view, ldₚ_smpl_view = setup_view(xₚ, ldₚ, temperature_ladder)
-    return DifferentialEvolutionState(
+    return DEMState(
         x,
         ld,
         rngs,
@@ -161,7 +221,7 @@ function DifferentialEvolutionState(
 end
 
 """
-    DifferentialEvolutionOutput{T <: Real}
+    DEMOutput{T <: Real}
 
 Container for differential evolution MCMC sampling results.
 
@@ -187,7 +247,7 @@ log_densities = output.ld          # Shape: (n_samples, n_chains)
 chain_1_samples = output.samples[:, 1, :]  # All samples from chain 1
 ```
 """
-struct DifferentialEvolutionOutput{T <: Real}
+struct DEMOutput{T <: Real}
     samples::Array{T, 3}
     ld::Matrix{T}
 end
