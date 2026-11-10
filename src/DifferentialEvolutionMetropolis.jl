@@ -45,6 +45,9 @@ abstract type AbstractDEMCompositeSampler <: AbstractDEMMetaSampler end
 
 chains_required(::AbstractDEMSampler) = 3  # conservative fallback, COV_EXCL_LINE
 
+# Number of memory positions an update draws, used to size the memory before sampling
+memory_picks(sampler::AbstractDEMSampler) = chains_required(sampler)
+
 abstract type AbstractDEMAdaptiveState{T} end
 
 abstract type AbstractDEMMemory{T} end
