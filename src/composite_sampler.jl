@@ -74,7 +74,7 @@ sampling strategies (e.g., DE updates with snooker updates) in a single sampler.
 
 # Keyword Arguments
 - `w`: Vector of weights for each update step. If not provided, all updates are chosen
-  with equal probability. Weights must be non-negative and will be automatically normalized.
+  with equal probability. Weights must be positive and will be automatically normalized.
 
 # Returns
 - A `DEMCompositeSamplerRandom` that can be used with `AbstractMCMC.sample`.
