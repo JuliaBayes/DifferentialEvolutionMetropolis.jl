@@ -95,8 +95,6 @@ DifferentialEvolutionMetropolis.step_warmup
 DifferentialEvolutionMetropolis.fix_sampler
 DifferentialEvolutionMetropolis.fix_sampler_state
 DifferentialEvolutionMetropolis.resolve_initial_position
-DifferentialEvolutionMetropolis.target_memory_size
-DifferentialEvolutionMetropolis.check_memory_size!
 ```
 
 ### Convergence and Stopping Criteria

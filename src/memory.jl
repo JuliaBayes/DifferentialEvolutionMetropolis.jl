@@ -107,25 +107,11 @@ function update_position!(method::DEMMemoryFillThin)
     end
 end
 
-"""
-    target_memory_size(sampler, n_chains; p = 0.01)
-
-Memory size `A = C / (1 - (1 - p)^(1 / k)) - C` at which an update of `C` chains in turn, each
-picking `k = memory_picks(sampler)` memory positions, has probability `p` of picking a position
-written in the same sweep.
-"""
 function target_memory_size(sampler::AbstractDEMMetaSampler, n_chains::Int; p::Real = 0.01)
     k = memory_picks(sampler)
     return ceil(Int, n_chains / (1 - (1 - p)^(1 / k)) - n_chains)
 end
 
-"""
-    check_memory_size!(log, sampler, n_chains, N₀, num_warmup, thin_interval, refill, total_memory_size)
-
-Compare the memory size when sampling begins with [`target_memory_size`](@ref).
-Warns if a refilling memory is smaller than the target, or if the memory after `num_warmup`
-warm-up steps is smaller than the target. Without `num_warmup`, adds the target to `log`.
-"""
 function check_memory_size!(
         log::Vector{String}, sampler::AbstractDEMMetaSampler, n_chains::Int, N₀::Int,
         num_warmup::Int, thin_interval::Int, refill::Bool, total_memory_size::Int

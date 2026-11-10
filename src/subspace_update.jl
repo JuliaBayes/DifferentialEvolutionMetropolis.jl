@@ -235,7 +235,4 @@ end
 
 chains_required(::AbstractDEMSubspaceSampler) = 3
 
-memory_picks(sampler::AbstractDEMSubspaceSampler) = 2 * ceil(Int, δ_median(sampler.δ_spl))
-
-δ_median(δ::Union{Dirac, DiscreteUniform}) = Distributions.median(δ)
-δ_median(δ::Sampleable) = StatsBase.median(rand(Xoshiro(1), δ, 1001))
+memory_picks(sampler::AbstractDEMSubspaceSampler) = 2 * ceil(Int, median(sampler.δ_spl))
