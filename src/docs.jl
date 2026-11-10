@@ -34,6 +34,9 @@ _generic_de_kwargs_2 = """
 - `memory_size`: Maximum number of positions preallocated per chain in memory. The effective number stored positions is `memory_size * (n_chains + n_hot_chains)`. Defaults to `1001` or `2*num_warmup` if that is provided here or via `sample`. If `memory_refill = true` this is the maximum number stored before refilling, if  `memory_refill = false` once the memory is full, the array is extended by another `memory_size` worth of positions. Set with consideration of available RAM and expected run length.
 - `memory_thin_interval`: Thinning interval for memory updates. If > 0, only every `memory_thin_interval`-th
   position is stored in memory.
+- `memory_stagger`: If `true`, chain `i` does not pick the newest memory entries of chains `i + 1` to `n_chains + n_hot_chains`.
+  Updating all chains at once then matches updating them in turn, with each chain's position entering memory `n_chains + n_hot_chains` updates later.
+  Requires `N₀ - (n_chains + n_hot_chains) + 1` to be at least the number of positions an update picks. Defaults to `false`.
 ## Parallel Tempering and Simulated Annealing Arguments
 - `n_hot_chains`: Number of hot chains for parallel tempering. Defaults to 0 (no parallel tempering).
 - `max_temp_pt`: Maximum temperature for parallel tempering. Defaults to 2*sqrt(dimension).

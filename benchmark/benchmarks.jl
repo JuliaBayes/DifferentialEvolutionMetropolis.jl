@@ -47,6 +47,11 @@ __,
     initial_position = initial_position_with_memory, n_chains = n_chains, N₀ = N₀
 )
 __,
+    initial_state_memory_stagger = AbstractMCMC.step(
+    rng, am_model, de_update; memory = true, memory_stagger = true,
+    initial_position = vcat(initial_position_with_memory, initial_position), n_chains = n_chains, N₀ = 2N₀
+)
+__,
     initial_state_adaptive = AbstractMCMC.step(
     rng, am_model, subspace_update; memory = false,
     initial_position = initial_position, n_chains = n_chains, adapt = true
@@ -122,6 +127,14 @@ SUITE["Memory"]["hmc_memory_update"] = @benchmarkable(
     AbstractMCMC.step(rng, $hmc_model, $hmc_memory_update, state),
     setup = (rng = copy($rng); state = deepcopy($hmc_memory_initial_state_memory))
 )
+
+SUITE["MemoryStagger"] = BenchmarkGroup(["string"])
+for (update, name) in zip(updates, names)
+    SUITE["MemoryStagger"][name] = @benchmarkable(
+        AbstractMCMC.step(rng, $am_model, $update, state),
+        setup = (rng = copy($rng); state = deepcopy($initial_state_memory_stagger))
+    )
+end
 
 SUITE["Adaptive"] = BenchmarkGroup(["string"])
 for (update, name) in zip(updates[3:3], names[3:3])
