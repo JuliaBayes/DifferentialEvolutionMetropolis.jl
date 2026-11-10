@@ -118,15 +118,18 @@ to the adaptation, and jumps are recorded once the running variance is available
 
 # Example
 ```@example step_warmup
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Setup for warmup step example
 rng = Random.default_rng()
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
-sampler = DREAMz()
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
+sampler = setup_subspace_sampling()
 
-# Initialize state (this would typically be done by AbstractMCMC.sample)
-# sample, new_state = step_warmup(rng, model_wrapper, sampler, state; parallel=false)
+# Initialize state and perform a warmup step
+_, state = AbstractMCMC.step(rng, model_wrapper, sampler)
+sample, new_state = AbstractMCMC.step_warmup(rng, model_wrapper, sampler, state; parallel=false)
 ```
 
 See also [`step`](@ref), [`fix_sampler`](@ref).
@@ -159,13 +162,28 @@ function step_warmup(
     fixed_sampler = fix_sampler(sampler, adaptive_state)
     prepare_scratch!(fixed_sampler, state)
 
-    if parallel
+    if uses_multi_try(fixed_sampler, state)
+        multi_try_update!(model, state, fixed_sampler, parallel)
+        if variance_ready
+            buffers = state.multi_try
+            for i in cold_chains
+                j = buffers.selected[i]
+                j == 0 && continue
+                cr_update = findfirst(==(buffers.forward_cr[j, i]), adaptive_state.cr_spl.support)
+                adaptive_state.L[cr_update] += 1
+                adaptive_state.Δ[cr_update] += sum(
+                    (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
+                        adaptive_state.variance
+                )
+            end
+        end
+    elseif parallel
         # thread safe updating
         Δ_update = zeros(T, length(x))
         cr_update = Vector{Int}(undef, length(x))
 
         Threads.@threads for i in eachindex(x)
-            prop = proposal!(state, fixed_sampler, i)
+            prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
             accepted = update_chain!(state.chain_models[i], state, prop.offset, i)
             cr_update[i] = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
             if accepted
@@ -183,14 +201,14 @@ function step_warmup(
         end
     else
         for i in eachindex(x)
-            prop = proposal!(state, fixed_sampler, i)
+            prop = proposal!(state.xₚ[i], x[i], state, fixed_sampler, i)
             accepted = update_chain!(model, state, prop.offset, i)
 
             if variance_ready && i in cold_chains
-                cr_update = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
-                adaptive_state.L[cr_update] += 1
+                cr_index = findfirst(==(prop.cr), adaptive_state.cr_spl.support)
+                adaptive_state.L[cr_index] += 1
                 if accepted
-                    adaptive_state.Δ[cr_update] += sum(
+                    adaptive_state.Δ[cr_index] += sum(
                         (state.x[i] .- state.xₚ[i]) .* (state.x[i] .- state.xₚ[i]) ./
                             adaptive_state.variance
                     )

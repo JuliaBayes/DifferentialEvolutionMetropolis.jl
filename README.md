@@ -6,9 +6,6 @@
 
 ## Overview
 
-NOTE: THIS PACKAGE HAS BEEN RENAMED FROM DEMetropolis TO DifferentialEvolutionMetropolis.
-PLEASE UPDATE YOUR DEPENDENCIES ACCORDINGLY!
-
 This package implements various differential evolution MCMC samplers in the Julia language, with some minor tweaks to simplify parallelism.
 
 These samplers excel at sampling from multimodal distributions.
@@ -16,17 +13,20 @@ The package is designed to be flexible and extensible, allowing users to customi
 
 Please start with the [documentation](https://GBarnsley.github.io/DifferentialEvolutionMetropolis.jl/stable).
 
+This package aims to support julia versions from LTS up to pre-release.
+
 ## Example
 
 ```
 using DifferentialEvolutionMetropolis, TransformedLogDensities, TransformVariables
+using AbstractMCMC
 
 function ld_normal(x)
     sum(-(x .* x)/2)
 end
 ld = TransformedLogDensity(as(Array, 4), ld_normal);
 
-DREAMz(ld, 1000)
+DREAMz(AbstractMCMC.LogDensityModel(ld), 1000)
 ```
 
 ## Bibliography

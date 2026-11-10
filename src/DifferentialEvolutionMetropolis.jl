@@ -1,5 +1,5 @@
 module DifferentialEvolutionMetropolis
-export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_swap_update, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
+export setup_de_update, setup_snooker_update, setup_subspace_sampling, setup_sampler_scheme, setup_random_order_scheme, setup_fixed_order_scheme, setup_swap_update, setup_hmc_update, memory_metric, cluster_pooled_metric, per_cluster_metric
 export step, step_warmup, fix_sampler
 export DifferentialEvolutionOutput
 export deMC, deMCzs, DREAMz
@@ -13,6 +13,7 @@ import Distributions
 import AliasTables: AliasTable, set_weights!
 
 import LogDensityProblems: logdensity, dimension
+import LogExpFunctions: logsumexp, logaddexp
 import StatsBase: wsample
 import StatsBase
 import LinearAlgebra: norm, normalize!, dot
@@ -35,7 +36,7 @@ struct DifferentialEvolutionState{
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
         M <: AbstractDifferentialEvolutionMemory{T},
         V <: AbstractVector{T}, VV <: AbstractVector{V},
-        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray,
+        R <: AbstractRNG, Model, V1 <: SubArray, V2 <: SubArray, B, O,
     }
     "current position"
     x::VV
@@ -51,6 +52,8 @@ struct DifferentialEvolutionState{
     memory::M
     "per-chain model copies for thread-safe parallel logdensity evaluation"
     chain_models::Vector{Model}
+    "preallocated multiple-try trials, `nothing` if multiple-try is disabled"
+    multi_try::B
     "preallocated next position"
     xₚ::VV
     "preallocated next log densities"
@@ -60,6 +63,8 @@ struct DifferentialEvolutionState{
     ld_smpl_view::V2
     xₚ_smpl_view::V1
     ldₚ_smpl_view::V2
+    "position of each fixed order scheme in its cycle, `nothing` if the sampler has no fixed order scheme"
+    order_state::O
 end
 
 # Reseed a chain rng from `rng`, Xoshiro states are set directly as `seed!` allocates while hashing the seed
@@ -75,7 +80,9 @@ function DifferentialEvolutionState(
         adaptive_state::A,
         temperature_ladder::L,
         memory::M,
-        chain_models::Vector{Model}
+        chain_models::Vector{Model},
+        n_tries::Int,
+        order_state
     ) where {
         T <: Real, A <: AbstractDifferentialEvolutionAdaptiveState{T},
         L <: AbstractDifferentialEvolutionTemperatureLadder{T},
@@ -97,12 +104,14 @@ function DifferentialEvolutionState(
         temperature_ladder,
         memory,
         chain_models,
+        multi_try_buffers(x, n_tries),
         xₚ,
         ldₚ,
         x_smpl_view,
         ld_smpl_view,
         xₚ_smpl_view,
-        ldₚ_smpl_view
+        ldₚ_smpl_view,
+        order_state
     )
 end
 
@@ -151,6 +160,7 @@ include("subspace_update.jl")
 include("subspace_adaptive_update.jl")
 include("composite_sampler.jl")
 include("swap_update.jl")
+include("multi_try.jl")
 include("utilities.jl")
 include("convergence.jl")
 include("templates.jl")

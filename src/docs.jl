@@ -17,6 +17,10 @@ _generic_de_kwargs_1 = """
   mixture. Only used for `MultiPathfinderResult` and tuple/vector-of-`PathfinderResult` inputs. Defaults to `true`.
 - `parallel`: Whether to evaluate initial log-densities in parallel. Useful for expensive models.
   Defaults to `false`.
+- `n_tries`: Number of multiple-try proposals per chain each step.
+  Each chain draws `n_tries` candidates, selects one with probability proportional to its target density (tempered if using annealing or parallel tempering), then draws `n_tries - 1` reference proposals from the selected candidate to give the acceptance probability.
+  This needs `n_chains * (2 * n_tries - 1)` log-density evaluations per step and is only worthwhile with `parallel = true`.
+  Only symmetric updates use multiple tries ([`setup_de_update`](@ref) and [`setup_subspace_sampling`](@ref)), other updates in a scheme take a single proposal. Defaults to 1 (no multiple tries).
 - `n_preallocated_indices`: This package provides fast sampling-without-replacement by pre-allocating indices, defaults to 3 (which the most asked for by the implemented samplers). Consider increasing it if you implement your own proposal that calls `pick_chains` with `n_chains > 3`.
 - `silent`: Suppress informational logging during initialization (e.g., initial position adjustments and
     memory setup) when `true`. Defaults to `false`.
@@ -92,7 +96,7 @@ deMC_kwargs = """
 - `save_burnt`: Save burn-in samples in output. Defaults to `false`.
 - `γ₁`: Primary scaling factor. Defaults to `2.38 / sqrt(2 * dim)`.
 - `γ₂`: Secondary scaling factor for mode switching. Defaults to 1.0.
-- `p_γ₂`: Probability of using `γ₂`. Defaults to 0.1.
+- `p_γ₂`: Probability of using `γ₂`. Defaults to 0.1. If an integer `n` is given, `γ₂` is instead used once after every `n` uses of `γ₁` (see [`setup_fixed_order_scheme`](@ref)).
 """
 
 deMCzs_description = """
@@ -106,7 +110,7 @@ Proposed by ter Braak and Vrugt (2008), see doi.org/10.1007/s11222-008-9104-9.
 deMCzs_kwargs = """
 - `γ`: Scaling factor for DE updates. Defaults to `2.38 / sqrt(2 * dim)`.
 - `γₛ`: Scaling factor for snooker updates. Defaults to `2.38 / sqrt(2)`.
-- `p_snooker`: Probability of snooker moves. Defaults to 0.1.
+- `p_snooker`: Probability of snooker moves. Defaults to 0.1. If an integer `n` is given, a snooker move is instead made once after every `n` DE moves (see [`setup_fixed_order_scheme`](@ref)).
 - `β`: Noise distribution for DE updates. Defaults to `Normal(0.0, 1e-12)`.
 """
 
@@ -122,7 +126,7 @@ Based on Vrugt et al. (2009), see doi.org/10.1515/IJNSNS.2009.10.3.273.
 DREAMz_kwargs = """
 - `γ₁`: Primary scaling factor for subspace updates. Defaults to adaptive.
 - `γ₂`: Secondary scaling factor. Defaults to 1.0.
-- `p_γ₂`: Probability of using `γ₂`. Defaults to 0.2.
+- `p_γ₂`: Probability of using `γ₂`. Defaults to 0.2. If an integer `n` is given, `γ₂` is instead used once after every `n` uses of `γ₁` (see [`setup_fixed_order_scheme`](@ref)).
 - `n_cr`: Number of crossover probabilities for adaptation. Defaults to 3.
 - `cr₁`: Crossover probability for `γ₁`, a fixed value or a distribution to draw it from. Defaults to adaptive.
 - `cr₂`: Crossover probability for `γ₂`, a fixed value or a distribution to draw it from. Defaults to adaptive.

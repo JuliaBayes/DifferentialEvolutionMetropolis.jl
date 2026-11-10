@@ -23,10 +23,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMC
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Define a simple log-density function
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run differential evolution MCMC
 result = deMC(model_wrapper, 1000; n_chains = 10, parallel = false)
@@ -62,7 +64,7 @@ function _deMC(
         rng::AbstractRNG = default_rng(),
         γ₁::Union{Nothing, T} = nothing,
         γ₂::T = 1.0,
-        p_γ₂::T = 0.1,
+        p_γ₂::Real = 0.1,
         β::ContinuousUnivariateDistribution = Normal(0.0, 1.0e-12),
         chain_type = DifferentialEvolutionOutput,
         n_hot_chains::Int = 0,
@@ -73,15 +75,21 @@ function _deMC(
     ) where {T <: Real}
 
     #build sampler scheme
-    if γ₁ != γ₂
-        sampler_scheme = setup_sampler_scheme(
-            setup_de_update(γ = γ₂, β = β, n_dims = dimension(model_wrapper.logdensity)),
-            setup_de_update(γ = γ₁, β = β, n_dims = dimension(model_wrapper.logdensity));
+    if γ₁ != γ₂ && is_fixed_order(p_γ₂)
+        sampler_scheme = setup_fixed_order_scheme(
+            setup_de_update(; γ = γ₁, β = β, n_dims = dimension(model_wrapper.logdensity)),
+            setup_de_update(; γ = γ₂, β = β, n_dims = dimension(model_wrapper.logdensity));
+            n = p_γ₂
+        )
+    elseif γ₁ != γ₂
+        sampler_scheme = setup_random_order_scheme(
+            setup_de_update(; γ = γ₂, β = β, n_dims = dimension(model_wrapper.logdensity)),
+            setup_de_update(; γ = γ₁, β = β, n_dims = dimension(model_wrapper.logdensity));
             w = [p_γ₂, 1 - p_γ₂]
         )
     else
-        sampler_scheme = setup_sampler_scheme(
-            setup_de_update(γ = γ₁, β = β, n_dims = dimension(model_wrapper.logdensity))
+        sampler_scheme = setup_random_order_scheme(
+            setup_de_update(; γ = γ₁, β = β, n_dims = dimension(model_wrapper.logdensity))
         )
     end
 
@@ -128,10 +136,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example deMCzs
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Define a simple log-density function
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run differential evolution MCMC
 result = deMCzs(model_wrapper, 1000; n_chains = 3)
@@ -177,13 +187,19 @@ function _deMCzs(
 
     #build sampler scheme
     if p_snooker == 0
-        sampler_scheme = setup_sampler_scheme(
-            setup_de_update(γ = γ, β = β, n_dims = dimension(model_wrapper.logdensity))
+        sampler_scheme = setup_random_order_scheme(
+            setup_de_update(; γ = γ, β = β, n_dims = dimension(model_wrapper.logdensity))
+        )
+    elseif is_fixed_order(p_snooker)
+        sampler_scheme = setup_fixed_order_scheme(
+            setup_de_update(; γ = γ, β = β, n_dims = dimension(model_wrapper.logdensity)),
+            setup_snooker_update(; γ = γₛ);
+            n = p_snooker
         )
     else
-        sampler_scheme = setup_sampler_scheme(
-            setup_de_update(γ = γ, β = β, n_dims = dimension(model_wrapper.logdensity)),
-            setup_snooker_update(γ = γₛ),
+        sampler_scheme = setup_random_order_scheme(
+            setup_de_update(; γ = γ, β = β, n_dims = dimension(model_wrapper.logdensity)),
+            setup_snooker_update(; γ = γₛ);
             w = [1 - p_snooker, p_snooker]
         )
     end
@@ -230,10 +246,12 @@ $(abstract_mcmc_kwargs)
 
 # Example
 ```@example DREAMz
-using DifferentialEvolutionMetropolis, Random, Distributions
+using DifferentialEvolutionMetropolis, AbstractMCMC, Random
+using TransformedLogDensities, TransformVariables
 
 # Define a simple log-density function
-model_wrapper(θ) = logpdf(MvNormal([0.0, 0.0], I), θ)
+ld = TransformedLogDensity(as(Array, 2), θ -> -sum(abs2, θ) / 2)
+model_wrapper = AbstractMCMC.LogDensityModel(ld)
 
 # Run DREAM with subspace sampling
 result = DREAMz(model_wrapper, 1000; n_chains = 10, memory = false)
@@ -286,22 +304,34 @@ function _DREAMz(
 
     #build sampler scheme
     if p_γ₂ == 0
-        sampler_scheme = setup_sampler_scheme(
-            setup_subspace_sampling(
+        sampler_scheme = setup_random_order_scheme(
+            setup_subspace_sampling(;
                 γ = γ₁, n_cr = n_cr, cr = cr₁, δ = δ, ϵ = ϵ, e = e,
                 cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
             )
         )
-    else
-        sampler_scheme = setup_sampler_scheme(
-            setup_subspace_sampling(
+    elseif is_fixed_order(p_γ₂)
+        sampler_scheme = setup_fixed_order_scheme(
+            setup_subspace_sampling(;
                 γ = γ₁, n_cr = n_cr, cr = cr₁, δ = δ, ϵ = ϵ, e = e,
                 cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
             ),
-            setup_subspace_sampling(
+            setup_subspace_sampling(;
                 γ = γ₂, n_cr = n_cr, cr = cr₂, δ = δ, ϵ = ϵ, e = e,
                 cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
+            );
+            n = p_γ₂
+        )
+    else
+        sampler_scheme = setup_random_order_scheme(
+            setup_subspace_sampling(;
+                γ = γ₁, n_cr = n_cr, cr = cr₁, δ = δ, ϵ = ϵ, e = e,
+                cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
             ),
+            setup_subspace_sampling(;
+                γ = γ₂, n_cr = n_cr, cr = cr₂, δ = δ, ϵ = ϵ, e = e,
+                cr_uniform_weight = cr_uniform_weight, min_variance_count = min_variance_count
+            );
             w = Float64[1 - p_γ₂, p_γ₂]
         )
     end
@@ -322,6 +352,9 @@ function _DREAMz(
         kwargs...
     )
 end
+
+# An integer secondary update parameter gives the number of main updates per secondary update, rather than a probability
+is_fixed_order(p::Real) = p isa Integer && p > 0
 
 function set_iterations(
         save_burnt::Bool, n_its::Int, n_burnin::Int
