@@ -1,5 +1,5 @@
 """
-    correctness_setup(model, update; memory, n_hot_chains, n_tries, gradient = false)
+    correctness_setup(model, update; memory, n_hot_chains, n_tries, gradient = false, parallel = false)
 
 Sampler keyword arguments, a buffer of initial positions (chains, then hot chains), the
 temperature each initial position is drawn at and the `LogDensityModel` to sample, wrapping
@@ -7,13 +7,13 @@ temperature each initial position is drawn at and the `LogDensityModel` to sampl
 memoryless `update` requires if larger. With memory, the sampler fills an initial memory of
 `N₀ = 3000` positions itself, so the memory is not drawn from the target.
 """
-function correctness_setup(model, update; memory, n_hot_chains, n_tries, gradient = false)
+function correctness_setup(model, update; memory, n_hot_chains, n_tries, gradient = false, parallel = false)
     d = LogDensityProblems.dimension(model)
     n_chains = memory ? 3 : max(3, DifferentialEvolutionMetropolis.chains_required(update))
     ladder = vcat(ones(n_chains), [1 + (2 * sqrt(d) - 1) * h / n_hot_chains for h in 1:n_hot_chains])
     N₀ = memory ? 3000 : 0
     kwargs = (;
-        memory, N₀, n_chains, n_hot_chains, n_tries, temperature_ladder = [ladder],
+        memory, N₀, n_chains, n_hot_chains, n_tries, parallel, temperature_ladder = [ladder],
         progress = false, adapt = false, chain_type = DEMOutput, silent = true,
     )
     initial_positions = [Vector{Float64}(undef, d) for _ in 1:(n_chains + n_hot_chains)]
@@ -215,28 +215,35 @@ function short_run_marginal_stationarity(rng, update; n = 20_000, n_steps = 4, s
 end
 
 """
-    test_update_correctness(rng, update, α; setup...)
+    update_correctness_results(rng, update, α; setup...)
 
-Run every correctness check on `update(d)`, a function of the target dimension `d`, each test at
-level `α`: the sequential rank test on a 3D standard normal, and the one-step covariance,
+Run every correctness check on `update(d)`, a function of the target dimension `d`, returning
+the sequential rank test result on a 3D standard normal, and p-values for the one-step covariance,
 short-run Uniform stationarity and long-run normal moment checks. Pass `CORRECTNESS_TEST_LEVEL`,
 the Bonferroni-corrected level over every correctness test. Memoryless short-run checks use
 `50_000` replicates, since refilling the initial memory dominates their cost with memory.
 """
-function test_update_correctness(rng, update, α; setup...)
-    @test sequential_testing(rng, update(3), IsotropicNormalModel(zeros(3)), α; setup...)
+function update_correctness_results(rng, update, α; setup...)
+    sequential = sequential_testing(rng, update(3), IsotropicNormalModel(zeros(3)), α; setup...)
     n_short_run = setup[:memory] ? 20_000 : 50_000
     covariance_p, cross_moment_p = one_step_covariance_testing(rng, update(1); n = n_short_run, setup...)
     uniform_p = short_run_marginal_stationarity(rng, update(1); n = n_short_run, setup...)
     moment_ps = normal_moments_check(rng, update(1); setup...)
-    @test covariance_p > α
-    @test cross_moment_p > α
-    @test uniform_p > α
-    @test minimum(moment_ps) > α
+    return (; sequential, covariance_p, cross_moment_p, uniform_p, moment_ps)
+end
+
+function test_update_correctness(rng, update, α; setup...)
+    results = update_correctness_results(rng, update, α; setup...)
+    @test results.sequential
+    @test results.covariance_p > α
+    @test results.cross_moment_p > α
+    @test results.uniform_p > α
+    @test minimum(results.moment_ps) > α
     return nothing
 end
 
-# Updates checked in test_correct.jl and test_correct_hmc.jl.
+# Valid updates checked in test_correct.jl and test_correct_hmc.jl. The intentionally
+# invalid negative control is excluded: its rejections are expected, not type-I errors.
 const N_CORRECTNESS_UPDATES = (; demc = 14, hmc = 5)
 
 # Per update: the two sequential tests, covariance, cross moment, Uniform stationarity and four moments.
