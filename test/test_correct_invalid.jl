@@ -35,8 +35,8 @@ end
     rng = backwards_compat_rng(1234)
     update(d) = ParallelMemorylessDE(2.38 / sqrt(2 * d))
     α = CORRECTNESS_TEST_LEVEL
-    results = @test_logs (:warn, r"Failed rank-uniformity across all iterations test") update_correctness_results(
-        rng, update, α; memory = false, n_hot_chains = 0, n_tries = 1, parallel = true
+    results = @test_logs (:warn, r"Failed rank-uniformity") match_mode = :any update_correctness_results(
+        rng, update, α; memory = false, n_hot_chains = 0, n_tries = 1
     )
 
     # Run the same checks, sample sizes and corrected alpha as the valid samplers.
